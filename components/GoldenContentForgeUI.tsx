@@ -155,16 +155,12 @@ export default function GoldenContentForgeUI() {
   return (
     <div>
       {/* HERO */}
-      <header className="mb-8">
-        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
-          <span className="bg-gradient-to-r from-indigo-300 via-fuchsia-300 to-amber-300 bg-clip-text text-transparent">
-            Paint → Blog Forge
-          </span>
-        </h1>
-        <p className="mt-2 text-slate-300/80">
-          Schilder een scene. Klik <span className="font-semibold">Forge</span>. Krijg titel, samenvatting &amp; blog — klaar voor publicatie.
-        </p>
-      </header>
+      <header className="flex items-center gap-3 mb-8">
+  <img src="/favicon.svg" alt="Golden Content Forge logo" className="w-10 h-10" />
+  <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-amber-200 via-yellow-300 to-rose-400 bg-clip-text text-transparent">
+    Golden Content Forge
+  </h1>
+</header>
 
       {/* FORM + CONFIG */}
       <form onSubmit={handleForge} className="grid gap-6 md:grid-cols-3">
