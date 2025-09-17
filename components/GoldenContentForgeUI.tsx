@@ -149,24 +149,60 @@ export default function GoldenContentForgeUI() {
           ? `${(process.env.NEXT_PUBLIC_SITE_URL || window.location.origin)}/blog/${slug}`
           : undefined);
 
-      // 4) Previews in UI
-      const metaPreviewText =
-        typeof data?.meta === "string"
-          ? data.meta
-          : data?.meta
-          ? JSON.stringify(data.meta, null, 2)
-          : summary || "(geen meta ontvangen)";
+// 4) Previews in UI — robuuste extractie van meta/blog
+const firstOf = (obj: any, paths: string[]) => {
+  for (const p of paths) {
+    const val = p.split(".").reduce((o, k) => (o && o[k] != null ? o[k] : undefined), obj);
+    if (val != null) return val;
+  }
+  return undefined;
+};
+const stripHtml = (val: any) => {
+  const s = typeof val === "string" ? val : "";
+  const div = document.createElement("div");
+  div.innerHTML = s;
+  return (div.textContent || div.innerText || "").replace(/\s+/g, " ").trim();
+};
 
-      const blogPreviewText =
-        typeof data?.blog === "string"
-          ? data.blog
-          : data?.blog?.content
-          ? data.blog.content
-          : JSON.stringify(data?.blog ?? data, null, 2);
+// Probeer veel-voorkomende varianten (n8n flows verschillen)
+const metaAny =
+  firstOf(data, [
+    "meta", "data.meta", "payload.meta", "result.meta",
+    "seo", "head.meta", "openGraph", "og", "metadata"
+  ]) ?? null;
 
-      setMetaPreview(metaPreviewText);
-      setBlogPreview(blogPreviewText);
-      push("Webhook OK — blog ontvangen.");
+let blogAny =
+  firstOf(data, [
+    "blog.content", "blog.html", "blog.markdown", "blog.md",
+    "content", "html", "markdown", "md",
+    "data.blog.content", "data.content", "result.content", "payload.content"
+  ]);
+if (!blogAny && typeof data?.blog === "string") blogAny = data.blog;
+if (!blogAny && typeof data === "string") blogAny = data; // sommige webhooks geven plain string
+
+// Bouw previews
+const metaPreviewText =
+  typeof metaAny === "string"
+    ? metaAny
+    : metaAny
+    ? JSON.stringify(metaAny, null, 2)
+    : (summary || "(geen meta ontvangen)");
+
+const blogHtmlOrText =
+  (typeof blogAny === "string" ? blogAny
+    : blogAny?.content || blogAny?.html || blogAny?.markdown || blogAny?.md || "")
+  || ""; // leeg als niets
+
+const blogPreviewText =
+  blogHtmlOrText
+    ? (blogHtmlOrText.startsWith("{") || blogHtmlOrText.startsWith("["))
+        ? blogHtmlOrText // lijkt al JSON
+        : stripHtml(blogHtmlOrText) // haal tags weg voor nette preview
+    : (summary || stripHtml(prompt) || "(geen blog ontvangen)");
+
+// Zet in UI
+setMetaPreview(metaPreviewText);
+setBlogPreview(blogPreviewText);
 
       // 5) Forge laten aanmaken (source + 5 drafts)
 const forgeRes = await fetch("/api/forge/create-source", {
