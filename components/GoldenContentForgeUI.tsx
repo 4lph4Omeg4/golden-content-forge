@@ -1,286 +1,167 @@
-// components/GoldenContentForgeUI.tsx
 "use client";
 
-import React, { useMemo, useState } from "react";
+import { useState } from "react";
 
-/** Defaults from env (optioneel invullen in .env.local) */
-const DEFAULTS = {
-  webhookUrl: process.env.NEXT_PUBLIC_WEBHOOK_URL || "",
-  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-  supabaseAnon: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+type BlogSavedPayload = {
+  title: string;
+  slug?: string;
+  summary?: string;
+  canonical_url?: string;
 };
 
-function cx(...xs: Array<string | false | null | undefined>) {
-  return xs.filter(Boolean).join(" ");
-}
-
-function isUUID(v?: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    (v || "").trim()
-  );
-}
-
-async function postWebhook(url: string, text: string) {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
-  });
-  if (!r.ok) throw new Error(`Webhook ${r.status}`);
-  return r.json() as Promise<{ ok?: boolean; idea_id?: string; id?: string }>;
-}
-
-async function fetchMeta(base: string, anon: string, ideaId: string) {
-  const url = `${base}/rest/v1/idea_meta?idea_id=eq.${encodeURIComponent(
-    ideaId
-  )}&select=idea_id,title,summary,topics,reading_time_sec`;
-  const r = await fetch(url, {
-    headers: {
-      apikey: anon,
-      Authorization: `Bearer ${anon}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      Prefer: "count=exact",
-    },
-  });
-  if (!r.ok) throw new Error(`meta ${r.status}`);
-  const j = await r.json();
-  return Array.isArray(j) ? j[0] : j;
-}
-
-async function fetchBlog(base: string, anon: string, ideaId: string) {
-  const url = `${base}/rest/v1/content_staging?idea_id=eq.${encodeURIComponent(
-    ideaId
-  )}&format=eq.blog&select=idea_id,title,body,lang,status,tags`;
-  const r = await fetch(url, {
-    headers: {
-      apikey: anon,
-      Authorization: `Bearer ${anon}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      Prefer: "count=exact",
-    },
-  });
-  if (!r.ok) throw new Error(`blog ${r.status}`);
-  const j = await r.json();
-  return Array.isArray(j) ? j[0] : j;
-}
-
-export default function GoldenContentForgeUI() {
-  const [scene, setScene] = useState("");
-  const [webhookUrl, setWebhookUrl] = useState(DEFAULTS.webhookUrl);
-  const [sbUrl, setSbUrl] = useState(DEFAULTS.supabaseUrl);
-  const [sbAnon, setSbAnon] = useState(DEFAULTS.supabaseAnon);
-
+export default function GoldenContentForgeUI({
+  onBlogSaved,
+}: {
+  onBlogSaved?: (blog: BlogSavedPayload) => Promise<void> | void;
+}) {
+  const [prompt, setPrompt] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
   const [loading, setLoading] = useState(false);
-  const [ideaId, setIdeaId] = useState("");
-  const [meta, setMeta] = useState<any>(null);
-  const [blog, setBlog] = useState<any>(null);
-  const [log, setLog] = useState<{ t: string; m: string }[]>([]);
+  const [metaPreview, setMetaPreview] = useState<string>("");
+  const [blogPreview, setBlogPreview] = useState<string>("");
+  const [log, setLog] = useState<string[]>([]);
 
-  function push(msg: unknown) {
-    setLog((xs) => [
-      ...xs,
-      {
-        t: new Date().toLocaleTimeString(),
-        m: typeof msg === "string" ? msg : JSON.stringify(msg),
-      },
-    ]);
+  function pushLog(line: string) {
+    setLog((l) => [new Date().toLocaleTimeString() + " — " + line, ...l].slice(0, 50));
   }
 
-  async function pollForResults(
-    base: string,
-    anon: string,
-    ideaId: string,
-    { tries = 20, delayMs = 1500 } = {}
-  ) {
-    for (let i = 0; i < tries; i++) {
-      try {
-        const [m, b] = await Promise.all([
-          fetchMeta(base, anon, ideaId).catch(() => null),
-          fetchBlog(base, anon, ideaId).catch(() => null),
-        ]);
-        if (m) setMeta(m);
-        if (b) setBlog(b);
-        if (m && b) return { m, b };
-      } catch {
-        // ignore
-      }
-      await new Promise((res) => setTimeout(res, delayMs));
+  async function handleForge() {
+    if (!webhookUrl.trim()) {
+      alert("Vul eerst je n8n Webhook URL in.");
+      return;
     }
-    return { m: null, b: null };
-  }
-
-  async function handleForge(e: React.FormEvent) {
-    e.preventDefault();
-    setMeta(null);
-    setBlog(null);
-    setIdeaId("");
-    setLog([]);
-
-    const sceneClean = scene.trim();
-    if (!sceneClean) return push("Geef eerst je scene in.");
-    if (!webhookUrl) return push("Vul je n8n webhook URL in.");
+    if (!prompt.trim()) {
+      alert("Schrijf eerst een korte scene/omschrijving.");
+      return;
+    }
+    setLoading(true);
+    pushLog("Start forge…");
 
     try {
-      setLoading(true);
-      push("POST → webhook…");
-      const resp = await postWebhook(webhookUrl, sceneClean);
-      push(resp);
-      const id = resp?.idea_id || resp?.id || "";
-      if (!id || !isUUID(id)) {
-        push("Geen geldige idea_id ontvangen — check Respond-node of Webhook mode.");
-        setIdeaId(String(id || ""));
-        return;
-      }
-      setIdeaId(id);
+      const res = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
 
-      if (sbUrl && sbAnon) {
-        push("Poll Supabase voor meta + blog…");
-        await pollForResults(sbUrl, sbAnon, id);
-      } else {
-        push("Supabase URL/Anon niet ingevuld — alleen idea_id getoond.");
-      }
+      const ct = res.headers.get("content-type") || "";
+      const data: any = ct.includes("application/json") ? await res.json() : await res.text();
+
+      // Probeer flexibel velden te lezen uit je webhook-respons
+      const title: string =
+        (data?.title as string) ??
+        (data?.blog?.title as string) ??
+        (data?.meta?.title as string) ??
+        "Untitled";
+
+      const slug: string | undefined =
+        (data?.slug as string) ?? (data?.blog?.slug as string) ?? undefined;
+
+      const summary: string | undefined =
+        (data?.summary as string) ??
+        (data?.blog?.summary as string) ??
+        (data?.meta?.description as string) ??
+        undefined;
+
+      const canonical_url: string | undefined =
+        (data?.canonical_url as string) ??
+        (data?.blog?.canonical_url as string) ??
+        (data?.meta?.url as string) ??
+        undefined;
+
+      // Voor de previews op de homepage
+      const metaText =
+        typeof data?.meta === "string"
+          ? data.meta
+          : data?.meta
+          ? JSON.stringify(data.meta, null, 2)
+          : summary || "(geen meta ontvangen)";
+      const blogText =
+        typeof data?.blog === "string"
+          ? data.blog
+          : data?.blog?.content
+          ? data.blog.content
+          : JSON.stringify(data?.blog ?? data, null, 2);
+
+      setMetaPreview(metaText);
+      setBlogPreview(blogText);
+
+      pushLog("Webhook OK — blog ontvangen.");
+
+      // >>> KOPPELING: Forge informeren dat er een blog is
+      await onBlogSaved?.({ title, slug, summary, canonical_url });
+      pushLog("Forge: Source + socials aangemaakt.");
     } catch (e: any) {
       console.error(e);
-      push(`Fout: ${e.message || e}`);
+      pushLog("Fout: " + (e?.message || "onbekend"));
+      alert("Er ging iets mis: " + (e?.message || "onbekend"));
     } finally {
       setLoading(false);
     }
   }
 
-  const envFilled = Boolean(DEFAULTS.webhookUrl && DEFAULTS.supabaseUrl && DEFAULTS.supabaseAnon);
-  const canQuerySb = useMemo(() => Boolean(sbUrl && sbAnon && isUUID(ideaId)), [sbUrl, sbAnon, ideaId]);
-
   return (
-    <div>
-      {/* HERO */}
-      <header className="flex items-center gap-3 mb-8">
-  <img src="/favicon.svg" alt="Golden Content Forge logo" className="w-10 h-10" />
-  <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-amber-200 via-yellow-300 to-rose-400 bg-clip-text text-transparent">
-    Golden Content Forge
-  </h1>
-</header>
+    <main className="mx-auto max-w-6xl px-4 py-6 text-slate-200">
+      <h1 className="text-3xl font-extrabold tracking-tight text-amber-300">Golden Content Forge</h1>
 
-      {/* FORM + CONFIG */}
-      <form onSubmit={handleForge} className="grid gap-6 md:grid-cols-3">
-        <div className="md:col-span-2 p-5 rounded-2xl bg-slate-900/60 ring-1 ring-white/10 shadow-xl backdrop-blur">
-          <label className="block text-sm font-medium mb-2 text-slate-300">Paint your scene</label>
+      {/* Top: prompt + webhook */}
+      <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5">
+          <label className="block text-sm text-slate-400 mb-2">Paint your scene</label>
           <textarea
-            className="w-full h-44 resize-vertical rounded-xl bg-slate-950/60 ring-1 ring-white/10 p-4 outline-none focus:ring-2 focus:ring-amber-400/50 placeholder:text-slate-500"
-            placeholder='Korte scene/beeld. Voorbeeld: "Kleine studio, regen tikt op het raam… ik besluit mijn chaos te ordenen door hardop te creëren."'
-            value={scene}
-            onChange={(e) => setScene(e.target.value)}
+            className="w-full min-h-[180px] rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 outline-none"
+            placeholder="Korte scene/beeld. Voorbeeld: “Kleine studio, regen tikt op het raam… ik besluit mijn chaos te ordenen door hardop te creëren.”"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
           />
-          <div className="mt-4 flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={loading}
-              className={cx(
-                "inline-flex items-center justify-center rounded-xl px-5 py-2.5 font-semibold",
-                "bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400 text-slate-950",
-                "shadow-[0_8px_30px_rgb(253_186_116_/_45%)] hover:brightness-110 active:scale-[.99] transition",
-                loading && "opacity-60 cursor-not-allowed"
-              )}
-            >
-              {loading ? "Bezig…" : "Forge ✨"}
-            </button>
-            {ideaId && (
-              <span className="text-xs text-slate-400">
-                idea_id: <span className="font-mono">{ideaId}</span>
-              </span>
-            )}
-          </div>
+          <button
+            onClick={handleForge}
+            disabled={loading}
+            className={[
+              "mt-4 rounded-xl border px-4 py-2 text-sm",
+              loading
+                ? "border-slate-700/60 bg-slate-800/40 text-slate-500 cursor-not-allowed"
+                : "border-amber-400/40 bg-amber-400/10 text-amber-200 hover:bg-amber-400/20",
+            ].join(" ")}
+          >
+            {loading ? "Aanmaken…" : "Forge ✨"}
+          </button>
         </div>
 
-        <div className="p-5 rounded-2xl bg-slate-900/60 ring-1 ring-white/10 shadow-xl backdrop-blur space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">n8n Webhook URL</label>
-            <input
-              className="w-full rounded-lg bg-slate-950/60 ring-1 ring-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-amber-400/50"
-              placeholder="https://your-n8n/.../webhook/paint"
-              value={webhookUrl}
-              onChange={(e) => setWebhookUrl(e.target.value)}
-            />
-          </div>
-          {!envFilled && (
-            <>
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Supabase URL (preview)</label>
-                <input
-                  className="w-full rounded-lg bg-slate-950/60 ring-1 ring-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-amber-400/50"
-                  placeholder="https://xxxxx.supabase.co"
-                  value={sbUrl}
-                  onChange={(e) => setSbUrl(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Supabase anon key (preview)</label>
-                <input
-                  className="w-full rounded-lg bg-slate-950/60 ring-1 ring-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-amber-400/50"
-                  placeholder="ey... (alleen anon; geen service_role)"
-                  value={sbAnon}
-                  onChange={(e) => setSbAnon(e.target.value)}
-                />
-              </div>
-              <p className="text-[11px] text-slate-400/80">
-                Deze keys worden alleen client-side gebruikt voor read-only previews. Zorg dat RLS select aan staat.
-              </p>
-            </>
-          )}
-        </div>
-      </form>
-
-      {/* PREVIEWS */}
-      <section className="mt-8 grid gap-6 md:grid-cols-2">
-        <div className="p-6 rounded-2xl bg-slate-900/60 ring-1 ring-white/10 shadow-xl backdrop-blur min-h-48">
-          <div className="mb-3 text-sm uppercase tracking-widest text-amber-300/80">Meta Preview</div>
-          {!meta ? (
-            <p className="text-sm text-slate-400">Nog niets — forge eerst, of wacht tot de meta is geschreven…</p>
-          ) : (
-            <div className="space-y-3">
-              <h2 className="text-xl font-bold text-amber-200">{meta.title}</h2>
-              <p className="text-slate-300/90">{meta.summary}</p>
-              {Array.isArray(meta.topics) && meta.topics.length > 0 && (
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {meta.topics.map((t: any, i: number) => (
-                    <span
-                      key={i}
-                      className="px-2.5 py-1 text-xs rounded-full bg-slate-800 ring-1 ring-white/10 text-slate-200"
-                    >
-                      {String(t)}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="p-6 rounded-2xl bg-slate-900/60 ring-1 ring-white/10 shadow-xl backdrop-blur min-h-48">
-          <div className="mb-3 text-sm uppercase tracking-widest text-emerald-300/80">Blog Preview</div>
-          {!blog ? (
-            <p className="text-sm text-slate-400">Nog niets — forge eerst, of wacht tot de blog klaar is…</p>
-          ) : (
-            <article className="prose prose-invert prose-slate max-w-none">
-              <h1 className="!mb-2">{blog.title}</h1>
-              <div className="whitespace-pre-wrap text-slate-200/95 leading-relaxed">{blog.body}</div>
-            </article>
-          )}
+        <div className="rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5">
+          <label className="block text-sm text-slate-400 mb-2">n8n Webhook URL</label>
+          <input
+            className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 outline-none"
+            placeholder="https://<jouw-n8n>.cloud/webhook/..."
+            value={webhookUrl}
+            onChange={(e) => setWebhookUrl(e.target.value)}
+          />
         </div>
       </section>
 
-      {/* LOG */}
-      <section className="mt-8 p-5 rounded-2xl bg-black/40 ring-1 ring-white/10 shadow-lg">
-        <div className="mb-2 text-sm uppercase tracking-widest text-slate-400">Log</div>
-        <div className="text-xs font-mono space-y-1 max-h-48 overflow-auto">
-          {log.map((l, i) => (
-            <div key={i} className="text-slate-300">
-              <span className="text-slate-500">{l.t}</span> — {l.m}
-            </div>
-          ))}
+      {/* Previews */}
+      <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-yellow-300">Meta Preview</h3>
+          <pre className="mt-3 whitespace-pre-wrap text-slate-300 text-sm" style={{ overflowWrap: "anywhere" }}>
+            {metaPreview || "Nog niets — forge eerst, of wacht tot de meta is geschreven…"}
+          </pre>
+        </div>
+        <div className="rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-teal-300">Blog Preview</h3>
+          <pre className="mt-3 whitespace-pre-wrap text-slate-300 text-sm" style={{ overflowWrap: "anywhere" }}>
+            {blogPreview || "Nog niets — forge eerst, of wacht tot de blog klaar is…"}
+          </pre>
         </div>
       </section>
-    </div>
+
+      {/* Log */}
+      <section className="mt-6 rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">Log</h3>
+        <ul className="mt-3 space-y-1 text-xs text-slate-400">
+          {log.length === 0 ? <li>(leeg)</li> : log.map((l, i) => <li key={i}>{l}</li>)}
+        </ul>
+      </section>
+    </main>
   );
 }
