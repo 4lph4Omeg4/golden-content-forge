@@ -1,6 +1,26 @@
 "use client";
 import { useState } from "react";
 
+function smartTitleFrom(input: string) {
+  const text = (input || "").replace(/\s+/g, " ").trim();
+  if (!text) return "Draft";
+  const firstSentence = (text.split(/(?<=[.!?])\s+/)[0] || text);
+  const firstClause = (firstSentence.split(/[–—-]|:|;/)[0] || firstSentence);
+  const words = firstClause.split(" ").filter(Boolean);
+  const cropped = words.slice(0, Math.max(6, Math.min(10, words.length))).join(" ");
+  return cropped.replace(/^[a-z]/, c => c.toUpperCase()).replace(/[.?!,:;–—-]+$/, "");
+}
+
+function smartSummaryFrom(input: string, limit = 220) {
+  const text = (input || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  if (text.length <= limit) return text;
+  const cut = text.slice(0, limit);
+  const lastSentenceEnd = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+  const idx = lastSentenceEnd > 60 ? lastSentenceEnd + 1 : cut.lastIndexOf(" ");
+  return (cut.slice(0, idx > 0 ? idx : limit).trim() + "…");
+}
+
 /* ---- Brand header: simpel & robuust ---- */
 function BrandTitle() {
   return (
