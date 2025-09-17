@@ -124,33 +124,45 @@ export default function ForgePage() {
   }
 
   // --- nieuw: submit nieuwe source + auto-derivatives
-  async function createSource(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.title.trim()) return alert("Titel is verplicht");
-    setCreating(true);
-    try {
-      const res = await fetch("/api/forge/create-source", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: form.title.trim(),
-          slug: form.slug.trim() || undefined,
-          summary: form.summary.trim() || undefined,
-          canonicalUrl: form.canonicalUrl.trim() || undefined,
-          variant: form.variant,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json.error || "create failed");
-      setForm({ title: "", slug: "", summary: "", canonicalUrl: "", variant: form.variant });
-      await refreshSources(json.sourceId);
-    } catch (err: any) {
-      console.error(err);
-      alert("Aanmaken mislukt: " + (err?.message ?? "unknown"));
-    } finally {
-      setCreating(false);
+async function createSource(e: React.FormEvent) {
+  e.preventDefault();
+  if (!form.title.trim()) return alert("Titel is verplicht");
+  setCreating(true);
+  try {
+    const res = await fetch("/api/forge/create-source", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: form.title.trim(),
+        slug: form.slug.trim() || undefined,
+        summary: form.summary.trim() || undefined,
+        canonicalUrl: form.canonicalUrl.trim() || undefined,
+        variant: form.variant,
+      }),
+    });
+
+    // Probeer JSON; zo niet, lees text (voorkomt “Unexpected token <”)
+    let json: any = null;
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("application/json")) {
+      json = await res.json();
+    } else {
+      const text = await res.text();
+      throw new Error(text.slice(0, 200));
     }
+
+    if (!res.ok || !json?.ok) throw new Error(json?.error || "create failed");
+
+    setForm({ title: "", slug: "", summary: "", canonicalUrl: "", variant: form.variant });
+    await refreshSources(json.sourceId);
+  } catch (err: any) {
+    alert("Aanmaken mislukt: " + (err?.message ?? "unknown"));
+    console.error(err);
+  } finally {
+    setCreating(false);
   }
+}
+
 
   if (loading) {
     return (
