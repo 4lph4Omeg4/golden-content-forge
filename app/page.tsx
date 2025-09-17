@@ -22,7 +22,7 @@ async function createForgeFromBlog(opts: {
 export default function Page() {
   return (
     <GoldenContentForgeUI
-      onBlogSaved={async (blog: { title: string; slug?: string; summary?: string; canonical_url?: string }) => {
+      onBlogSaved={async (blog) => {
         try {
           await createForgeFromBlog({
             title: blog.title,
@@ -30,9 +30,11 @@ export default function Page() {
             summary: blog.summary,
             canonicalUrl:
               blog.canonical_url ||
-              (blog.slug ? `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/blog/${blog.slug}` : undefined),
+              (blog.slug
+                ? `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/blog/${blog.slug}`
+                : undefined),
           });
-          // optioneel: console.log("Forge source created");
+          // Optional: console.log("Forge source created");
         } catch (e) {
           console.error("Forge create failed", e);
         }
