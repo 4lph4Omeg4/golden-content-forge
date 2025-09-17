@@ -230,27 +230,32 @@ export default function ForgePage() {
         </form>
       </Card>
 
-      {/* Bronselector */}
-      <Card className="mt-6">
-        <div className="flex flex-wrap gap-2">
-          {sources.map((s) => {
-            const active = s.id === selectedId;
-            return (
-              <button
-                key={s.id}
-                onClick={() => setSelectedId(s.id)}
-                className={[
-                  "rounded-xl border px-3 py-1.5 text-sm",
-                  active ? "border-amber-400/40 bg-amber-400/10 text-amber-200" : "border-slate-600/60 bg-slate-800/60 text-slate-200",
-                ].join(" ")}
-                title={s.slug ?? s.id}
-              >
-                {s.title || s.slug || s.id.slice(0, 8)}
-              </button>
-            );
-          })}
-        </div>
-      </Card>
+{/* Bronselector (alleen tonen als er > 1 bron is) */}
+{sources.length > 1 && (
+  <Card className="mt-6">
+    <div className="flex flex-wrap gap-2">
+      {sources.map((s) => {
+        const active = s.id === selectedId;
+        return (
+          <button
+            key={s.id}
+            onClick={() => setSelectedId(s.id)}
+            className={[
+              "rounded-xl border px-3 py-1.5 text-sm",
+              active
+                ? "border-slate-600/60 bg-slate-800/60 text-slate-200" // geen gele highlight meer
+                : "border-slate-600/60 bg-slate-800/60 text-slate-200 hover:bg-slate-800",
+            ].join(" ")}
+            title={s.slug ?? s.id}
+          >
+            {s.title || s.slug || s.id.slice(0, 8)}
+          </button>
+        );
+      })}
+    </div>
+  </Card>
+)}
+
 
       {/* Geselecteerde bron */}
       {selected && (
