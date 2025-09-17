@@ -3,13 +3,10 @@
 import { useState } from "react";
 
 /* ---- Brand header: clean fallback, geen alt-tekst-glitch ---- */
-import { useState } from "react";
-
 function BrandTitle() {
   const [i, setI] = useState(0);
   const [ok, setOk] = useState(false);
 
-  // probeer eerst jouw vaste pad; daarna brede fallbacks
   const candidates = [
     "/brands/forge.svg",
     "/brands/forge.png",
@@ -24,13 +21,13 @@ function BrandTitle() {
     <div className="flex items-center gap-3">
       {src && (
         <img
-          src={`${src}?v=1`}           // mini cache-buster
-          alt=""                        // alt leeg = geen lelijke tekst bij fout
+          src={`${src}?v=1`}
+          alt=""
           width={28}
           height={28}
           className={`shrink-0 rounded-md ${ok ? "opacity-100" : "opacity-0"}`}
-          onLoad={() => setOk(true)}    // pas tonen als 'ie echt geladen is
-          onError={() => { setOk(false); setI(n => n + 1); }} // volgende kandidaat
+          onLoad={() => setOk(true)}
+          onError={() => { setOk(false); setI(n => n + 1); }}
         />
       )}
       <h1 aria-label="Golden Content Forge" className="text-3xl font-extrabold tracking-tight">
@@ -40,7 +37,7 @@ function BrandTitle() {
     </div>
   );
 }
-/* ------------------------------------------------------------- */
+
 
 type BlogSavedPayload = {
   title: string;
