@@ -8,13 +8,13 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// ---------- UI helpers (licht & stabiel) ----------
+// ---------- UI helpers (stabiel, zelfde stijl als je site) ----------
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <div
       className={[
         "rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5",
-        "overflow-hidden", // voorkom uit de card “lekken”
+        "overflow-hidden", // geen tekst die uit de card loopt
         className,
       ].join(" ")}
     >
@@ -51,13 +51,43 @@ function LogoBadge({ platform, label }: { platform?: string | null; label?: stri
         alt={(label || key).toUpperCase()}
         width={16}
         height={16}
-        style={{ display: "inline-block", width: 16, height: 16, objectFit: "contain" }} // vaste maat = geen “springen”
+        style={{ display: "inline-block", width: 16, height: 16, objectFit: "contain" }}
       />
       <span className="text-xs font-medium text-slate-200">{(label || key).toUpperCase()}</span>
     </span>
   );
 }
-// ---------------------------------------------------
+
+// Kleine copy-knop (werkt met Clipboard API + fallback)
+function CopyBtn({ text }: { text: string }) {
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("Gekopieerd ✅");
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      alert("Gekopieerd ✅");
+    }
+  }
+  return (
+    <button
+      onClick={copy}
+      className="rounded-lg border border-slate-600/70 bg-slate-800/60 px-2 py-1 text-xs text-slate-200 hover:bg-slate-800"
+      title="Copy caption"
+      type="button"
+    >
+      Copy
+    </button>
+  );
+}
+// -------------------------------------------------------------------
 
 type Source = { id: string; title: string; slug: string | null; summary: string | null; created_at: string };
 type Derivative = { id: string; platform: string | null; kind: string | null; status: string | null; created_at: string; payload: any };
@@ -68,7 +98,7 @@ export default function ForgePage() {
   const [derivatives, setDerivatives] = useState<Derivative[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // bronnen
+  // bronnen ophalen
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -80,7 +110,7 @@ export default function ForgePage() {
       if (!mounted) return;
       if (data?.length) {
         setSources(data);
-        setSelectedId((prev) => prev ?? data[0].id); // zet maar 1x, voorkomt “flippen”
+        setSelectedId((prev) => prev ?? data[0].id); // maar 1x zetten → minder “flippen”
       }
       setLoading(false);
     })();
@@ -89,7 +119,7 @@ export default function ForgePage() {
     };
   }, []);
 
-  // socials
+  // socials voor geselecteerde bron
   useEffect(() => {
     if (!selectedId) return;
     let mounted = true;
@@ -126,7 +156,7 @@ export default function ForgePage() {
       <h1 className="text-3xl font-extrabold tracking-tight text-amber-300">Golden Content Forge</h1>
       <p className="mt-1 text-slate-400">Preview van opgeslagen content</p>
 
-      {/* bronselector: geen heavy hover/shadows = minder “glitch” */}
+      {/* Bronselector */}
       <Card className="mt-6">
         <div className="flex flex-wrap gap-2">
           {sources.map((s) => {
@@ -148,7 +178,7 @@ export default function ForgePage() {
         </div>
       </Card>
 
-      {/* bron */}
+      {/* Geselecteerde bron */}
       {selected && (
         <Card className="mt-4">
           <h2 className="text-xl font-semibold text-slate-100">{selected.title}</h2>
@@ -157,7 +187,7 @@ export default function ForgePage() {
         </Card>
       )}
 
-      {/* socials */}
+      {/* Social posts (met echte logo's + Copy-knop) */}
       <section className="mt-6">
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-teal-300">Social posts</h3>
         {derivatives.length === 0 ? (
@@ -178,19 +208,18 @@ export default function ForgePage() {
                         {d.kind}
                       </span>
                     </div>
-                    <span className="rounded-full border border-slate-600/70 bg-slate-800/60 px-2 py-0.5 text-[11px] text-slate-300">
-                      {d.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <CopyBtn text={text} />
+                      <span className="rounded-full border border-slate-600/70 bg-slate-800/60 px-2 py-0.5 text-[11px] text-slate-300">
+                        {d.status}
+                      </span>
+                    </div>
                   </div>
 
                   {text && (
                     <p
                       className="mt-3 text-[15px] leading-relaxed text-slate-200"
-                      style={{
-                        whiteSpace: "pre-wrap",
-                        overflowWrap: "anywhere", // lange woorden/links breken altijd
-                        wordBreak: "break-word",
-                      }}
+                      style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word" }}
                     >
                       {text}
                     </p>
@@ -204,7 +233,7 @@ export default function ForgePage() {
                         href={link}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={{ wordBreak: "break-all" }} // ook links nooit buiten de card
+                        style={{ wordBreak: "break-all" }}
                       >
                         {link}
                       </a>
