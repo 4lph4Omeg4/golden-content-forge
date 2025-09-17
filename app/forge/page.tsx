@@ -8,10 +8,16 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// ---------- UI helpers ----------
+// ---------- UI helpers (licht & stabiel) ----------
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5 shadow-sm ${className}`}>
+    <div
+      className={[
+        "rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5",
+        "overflow-hidden", // voorkom uit de card “lekken”
+        className,
+      ].join(" ")}
+    >
       {children}
     </div>
   );
@@ -34,7 +40,6 @@ function LogoBadge({ platform, label }: { platform?: string | null; label?: stri
       </span>
     );
   }
-
   const svg = `/brands/${base}.svg`;
   const png = `/brands/${base}.png`;
 
@@ -42,20 +47,17 @@ function LogoBadge({ platform, label }: { platform?: string | null; label?: stri
     <span className="inline-flex items-center gap-2 rounded-full border border-slate-600/70 bg-slate-800/60 px-2 py-0.5">
       <img
         src={svg}
-        onError={(e) => {
-          (e.currentTarget as HTMLImageElement).src = png;
-        }}
+        onError={(e) => ((e.currentTarget as HTMLImageElement).src = png)}
         alt={(label || key).toUpperCase()}
-        width={14}
-        height={14}
-        style={{ display: "inline-block" }}
+        width={16}
+        height={16}
+        style={{ display: "inline-block", width: 16, height: 16, objectFit: "contain" }} // vaste maat = geen “springen”
       />
       <span className="text-xs font-medium text-slate-200">{(label || key).toUpperCase()}</span>
     </span>
   );
 }
-// --------------------------------
-
+// ---------------------------------------------------
 
 type Source = { id: string; title: string; slug: string | null; summary: string | null; created_at: string };
 type Derivative = { id: string; platform: string | null; kind: string | null; status: string | null; created_at: string; payload: any };
@@ -66,36 +68,45 @@ export default function ForgePage() {
   const [derivatives, setDerivatives] = useState<Derivative[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 1) bronnen
+  // bronnen
   useEffect(() => {
+    let mounted = true;
     (async () => {
       const { data } = await supabase
         .from("content_sources")
         .select("id,title,slug,summary,created_at")
         .order("created_at", { ascending: false })
         .limit(25);
+      if (!mounted) return;
       if (data?.length) {
         setSources(data);
-        setSelectedId(data[0].id);
+        setSelectedId((prev) => prev ?? data[0].id); // zet maar 1x, voorkomt “flippen”
       }
       setLoading(false);
     })();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // 2) socials
+  // socials
   useEffect(() => {
     if (!selectedId) return;
+    let mounted = true;
     (async () => {
       const { data } = await supabase
         .from("content_derivatives")
         .select("id,platform,kind,status,created_at,payload")
         .eq("source_id", selectedId)
-        .in("status", ["draft","review","approved","scheduled","posted"])
+        .in("status", ["draft", "review", "approved", "scheduled", "posted"])
         .order("platform", { ascending: true })
         .order("kind", { ascending: true })
         .order("created_at", { ascending: false });
-      setDerivatives(data || []);
+      if (mounted) setDerivatives(data || []);
     })();
+    return () => {
+      mounted = false;
+    };
   }, [selectedId]);
 
   if (loading) {
@@ -108,27 +119,25 @@ export default function ForgePage() {
     );
   }
 
-  const selected = sources.find(s => s.id === selectedId) || null;
+  const selected = sources.find((s) => s.id === selectedId) || null;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 text-slate-200">
       <h1 className="text-3xl font-extrabold tracking-tight text-amber-300">Golden Content Forge</h1>
       <p className="mt-1 text-slate-400">Preview van opgeslagen content</p>
 
-      {/* selector */}
+      {/* bronselector: geen heavy hover/shadows = minder “glitch” */}
       <Card className="mt-6">
         <div className="flex flex-wrap gap-2">
-          {sources.map(s => {
+          {sources.map((s) => {
             const active = s.id === selectedId;
             return (
               <button
                 key={s.id}
                 onClick={() => setSelectedId(s.id)}
                 className={[
-                  "rounded-xl border px-3 py-1.5 text-sm transition",
-                  active
-                    ? "border-amber-400/40 bg-amber-400/10 text-amber-200 shadow-[0_0_25px_rgba(251,191,36,0.15)]"
-                    : "border-slate-600/60 bg-slate-800/60 text-slate-200 hover:bg-slate-800"
+                  "rounded-xl border px-3 py-1.5 text-sm",
+                  active ? "border-amber-400/40 bg-amber-400/10 text-amber-200" : "border-slate-600/60 bg-slate-800/60 text-slate-200",
                 ].join(" ")}
                 title={s.slug ?? s.id}
               >
@@ -148,20 +157,20 @@ export default function ForgePage() {
         </Card>
       )}
 
-      {/* socials met ECHTE logo's */}
+      {/* socials */}
       <section className="mt-6">
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-teal-300">Social posts</h3>
         {derivatives.length === 0 ? (
           <Card>Nog geen socials voor deze bron.</Card>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {derivatives.map(d => {
+            {derivatives.map((d) => {
               const payload = d.payload || {};
               const text = payload.caption ?? payload.script ?? "";
               const hashtags = Array.isArray(payload.hashtags) ? payload.hashtags.join(" ") : "";
               const link = payload.cta_url ?? "";
               return (
-                <Card key={d.id}>
+                <Card key={d.id} className="min-h-[180px]">
                   <div className="flex items-center justify-between gap-3 text-xs">
                     <div className="flex flex-wrap items-center gap-2">
                       <LogoBadge platform={d.platform} />
@@ -175,19 +184,27 @@ export default function ForgePage() {
                   </div>
 
                   {text && (
-                    <p className="mt-3 whitespace-pre-wrap text-[15px] leading-relaxed text-slate-200">
+                    <p
+                      className="mt-3 text-[15px] leading-relaxed text-slate-200"
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        overflowWrap: "anywhere", // lange woorden/links breken altijd
+                        wordBreak: "break-word",
+                      }}
+                    >
                       {text}
                     </p>
                   )}
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    {hashtags && <span className="text-xs text-slate-400">{hashtags}</span>}
+                    {hashtags && <span className="text-xs text-slate-400" style={{ overflowWrap: "anywhere" }}>{hashtags}</span>}
                     {link && (
                       <a
                         className="text-sm text-amber-300 underline-offset-2 hover:text-amber-200 hover:underline"
                         href={link}
                         target="_blank"
                         rel="noopener noreferrer"
+                        style={{ wordBreak: "break-all" }} // ook links nooit buiten de card
                       >
                         {link}
                       </a>
