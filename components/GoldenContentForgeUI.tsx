@@ -149,15 +149,23 @@ export default function GoldenContentForgeUI() {
       push("Webhook OK — blog ontvangen.");
 
       // 5) Forge laten aanmaken (source + 5 drafts)
-      const forgeRes = await fetch("/api/forge/create-source", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, slug, summary, canonicalUrl }),
-      });
-      const forgeCt = forgeRes.headers.get("content-type") || "";
-      const forgeJson = forgeCt.includes("application/json") ? await forgeRes.json() : null;
-      if (!forgeRes.ok || !forgeJson?.ok) throw new Error(forgeJson?.error || "Forge create failed");
-
+const forgeRes = await fetch("/api/forge/create-source", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    title:
+      (typeof title === "string" && title.trim()) ? title.trim()
+      : (prompt.split(/\s+/).slice(0, 12).join(" ") || "Draft"),
+    slug,
+    summary:
+      (typeof summary === "string" && summary.trim()) ? summary.trim()
+      : prompt.slice(0, 220),
+    canonicalUrl,
+  }),
+});
+const forgeCt = forgeRes.headers.get("content-type") || "";
+const forgeJson = forgeCt.includes("application/json") ? await forgeRes.json() : null;
+      
       push("Forge: Source + socials aangemaakt.");
     } catch (e: any) {
       console.error(e);
