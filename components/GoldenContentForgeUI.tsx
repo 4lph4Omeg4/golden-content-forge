@@ -1,58 +1,35 @@
 "use client";
-
 import { useState } from "react";
 
-/* ---- Brand header: clean fallback, geen alt-tekst-glitch ---- */
+/* ---- Brand header: simpel & robuust ---- */
 function BrandTitle() {
-  const [i, setI] = useState(0);
-  const [ok, setOk] = useState(false);
-
-  const candidates = [
-    "/brands/forge.svg",
-    "/brands/forge.png",
-    "/gcf-logo.svg",
-    "/gcf-logo.png",
-    "/logo.svg",
-    "/logo.png",
-  ];
-  const src = i < candidates.length ? candidates[i] : null;
-
   return (
     <div className="flex items-center gap-3">
-      {src && (
-        <img
-          src={`${src}?v=1`}
-          alt=""
-          width={28}
-          height={28}
-          className={`shrink-0 rounded-md ${ok ? "opacity-100" : "opacity-0"}`}
-          onLoad={() => setOk(true)}
-          onError={() => { setOk(false); setI(n => n + 1); }}
-        />
-      )}
-      <h1 aria-label="Golden Content Forge" className="text-3xl font-extrabold tracking-tight">
+      <img
+        src="/brands/forge.svg?v=1"
+        alt=""
+        width={28}
+        height={28}
+        className="shrink-0 rounded-md"
+        onError={(e) => {
+          const img = e.currentTarget as HTMLImageElement;
+          if (img.src.includes(".svg")) img.src = "/brands/forge.png?v=1";
+          else img.remove();
+        }}
+      />
+      <h1 className="text-3xl font-extrabold tracking-tight">
         <span className="text-amber-300">Golden</span>{" "}
         <span className="text-amber-100">Content Forge</span>
       </h1>
     </div>
   );
 }
+/* --------------------------------------- */
 
+const WEBHOOK = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL!; // hardcoded via env
 
-type BlogSavedPayload = {
-  title: string;
-  slug?: string;
-  summary?: string;
-  canonical_url?: string;
-};
-
-export default function GoldenContentForgeUI({
-  onBlogSaved,
-}: {
-  onBlogSaved?: (blog: BlogSavedPayload) => Promise<void> | void;
-}) {
+export default function GoldenContentForgeUI() {
   const [prompt, setPrompt] = useState("");
-  const [webhookUrl, setWebhookUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [metaPreview, setMetaPreview] = useState<string>("");
   const [blogPreview, setBlogPreview] = useState<string>("");
@@ -63,19 +40,14 @@ export default function GoldenContentForgeUI({
   }
 
   async function handleForge() {
-    if (!webhookUrl.trim()) {
-      alert("Vul eerst je n8n Webhook URL in.");
-      return;
-    }
-    if (!prompt.trim()) {
-      alert("Schrijf eerst een korte scene/omschrijving.");
-      return;
-    }
+    if (!WEBHOOK) return alert("NEXT_PUBLIC_N8N_WEBHOOK_URL ontbreekt.");
+    if (!prompt.trim()) return alert("Schrijf eerst een korte scene/omschrijving.");
     setLoading(true);
     pushLog("Start forge…");
 
     try {
-      const res = await fetch(webhookUrl, {
+      // 1) Webhook aanroepen (hardcoded URL)
+      const res = await fetch(WEBHOOK, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt }),
@@ -84,6 +56,7 @@ export default function GoldenContentForgeUI({
       const ct = res.headers.get("content-type") || "";
       const data: any = ct.includes("application/json") ? await res.json() : await res.text();
 
+      // 2) Velden uit webhook
       const title: string =
         (data?.title as string) ??
         (data?.blog?.title as string) ??
@@ -99,12 +72,13 @@ export default function GoldenContentForgeUI({
         (data?.meta?.description as string) ??
         undefined;
 
-      const canonical_url: string | undefined =
+      const canonicalUrl: string | undefined =
         (data?.canonical_url as string) ??
         (data?.blog?.canonical_url as string) ??
         (data?.meta?.url as string) ??
-        undefined;
+        (slug ? `${(process.env.NEXT_PUBLIC_SITE_URL || window.location.origin)}/blog/${slug}` : undefined);
 
+      // 3) Previews
       const metaText =
         typeof data?.meta === "string"
           ? data.meta
@@ -120,10 +94,17 @@ export default function GoldenContentForgeUI({
 
       setMetaPreview(metaText);
       setBlogPreview(blogText);
-
       pushLog("Webhook OK — blog ontvangen.");
 
-      await onBlogSaved?.({ title, slug, summary, canonical_url });
+      // 4) Forge informeren
+      const forgeRes = await fetch("/api/forge/create-source", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, slug, summary, canonicalUrl }),
+      });
+      const forgeCt = forgeRes.headers.get("content-type") || "";
+      const forgeJson = forgeCt.includes("application/json") ? await forgeRes.json() : null;
+      if (!forgeRes.ok || !forgeJson?.ok) throw new Error(forgeJson?.error || "Forge create failed");
       pushLog("Forge: Source + socials aangemaakt.");
     } catch (e: any) {
       console.error(e);
@@ -138,13 +119,13 @@ export default function GoldenContentForgeUI({
     <main className="mx-auto max-w-6xl px-4 py-6 text-slate-200">
       <BrandTitle />
 
-      {/* Top: prompt + webhook */}
+      {/* Prompt + knop (geen webhook input meer) */}
       <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5">
+        <div className="rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5 md:col-span-2">
           <label className="block text-sm text-slate-400 mb-2">Paint your scene</label>
           <textarea
             className="w-full min-h-[180px] rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 outline-none"
-            placeholder="Korte scene/beeld. Voorbeeld: “Kleine studio, regen tikt op het raam… ik besluit mijn chaos te ordenen door hardop te creëren.”"
+            placeholder="Korte scene/beeld…"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
           />
@@ -160,16 +141,6 @@ export default function GoldenContentForgeUI({
           >
             {loading ? "Aanmaken…" : "Forge ✨"}
           </button>
-        </div>
-
-        <div className="rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5">
-          <label className="block text-sm text-slate-400 mb-2">n8n Webhook URL</label>
-          <input
-            className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 outline-none"
-            placeholder="https://<jouw-n8n>.cloud/webhook/..."
-            value={webhookUrl}
-            onChange={(e) => setWebhookUrl(e.target.value)}
-          />
         </div>
       </section>
 
