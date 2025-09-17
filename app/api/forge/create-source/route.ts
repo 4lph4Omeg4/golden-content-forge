@@ -3,9 +3,11 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SRK = process.env.SUPABASE_SERVICE_ROLE_KEY!; // SERVER-ONLY
-const supabase = createClient(SUPABASE_URL, SRK, { auth: { persistSession: false } });
+function reqEnv(name: string) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env: ${name}`);
+  return v;
+}
 
 type Body = {
   title: string;
@@ -15,26 +17,42 @@ type Body = {
   variant?: "calm" | "spicy";
 };
 
-function utm(base: string | undefined, platform: string, slug: string | undefined) {
+function utm(base: string | null, platform: string, slug: string | null) {
   if (!base) return null;
   const sep = base.includes("?") ? "&" : "?";
   return `${base}${sep}utm_source=${platform}&utm_medium=social&utm_campaign=timeline_alchemy&utm_content=${slug ?? "content"}`;
 }
 
+export async function GET() {
+  // snelle route-check
+  return NextResponse.json({ ok: true, route: "create-source" });
+}
+
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as Body;
-    const { title, slug, summary, canonicalUrl, variant = "calm" } = body;
-    if (!title) return NextResponse.json({ error: "title is required" }, { status: 400 });
+    // env pas HIER lezen (niet top-level) zodat we nette JSON error kunnen geven
+    const SUPABASE_URL = reqEnv("NEXT_PUBLIC_SUPABASE_URL");
+    const SRK = reqEnv("SUPABASE_SERVICE_ROLE_KEY");
+    const supabase = createClient(SUPABASE_URL, SRK, { auth: { persistSession: false } });
 
-    // 1) Source aanmaken
+    const b = (await req.json()) as Body;
+    const title = (b.title ?? "").toString().trim();
+    if (!title) return NextResponse.json({ ok: false, error: "title is required" }, { status: 400 });
+
+    const slug = b.slug ? String(b.slug) : null;
+    const summary = b.summary ? String(b.summary) : null;
+    const canonicalUrl = b.canonicalUrl ? String(b.canonicalUrl) : null;
+    const variant: "calm" | "spicy" = b.variant === "spicy" ? "spicy" : "calm";
+
+    // 1) Source
     const { data: src, error: srcErr } = await supabase
       .from("content_sources")
-      .insert([{ title, slug: slug ?? null, summary: summary ?? null, canonical_url: canonicalUrl ?? null }])
+      .insert([{ title, slug, summary, canonical_url: canonicalUrl }])
       .select("id, slug, canonical_url")
       .single();
     if (srcErr) throw srcErr;
 
+    // 2) 5 socials
     const platforms = [
       { platform: "x", kind: "caption" as const },
       { platform: "instagram", kind: "caption" as const },
@@ -43,13 +61,13 @@ export async function POST(req: Request) {
       { platform: "facebook", kind: "caption" as const },
     ];
 
-    // 2) 5 socials genereren met simpele payload + UTM
+    const baseText =
+      variant === "spicy"
+        ? "Als je ophoudt met duwen, beweegt alles makkelijker. Presence ≠ passief: het is zuivere kracht."
+        : "Soms is niets doen het meest productieve. Eén adem. Presence.";
+
     const rows = platforms.map((p) => {
       const link = utm(src.canonical_url as any, p.platform, src.slug);
-      const baseText =
-        variant === "spicy"
-          ? "Als je ophoudt met duwen, beweegt alles makkelijker. Presence ≠ passief: het is zuivere kracht."
-          : "Soms is niets doen het meest productieve. Eén adem. Presence.";
       const payload: any =
         p.kind === "tiktok_script"
           ? {
@@ -64,13 +82,7 @@ export async function POST(req: Request) {
               hashtags: ["#presence", "#nonduality", "#inneralchemy"],
               cta_url: link,
             };
-      return {
-        source_id: src.id,
-        platform: p.platform,
-        kind: p.kind,
-        status: "draft",
-        payload,
-      };
+      return { source_id: src.id, platform: p.platform, kind: p.kind, status: "draft", payload };
     });
 
     const { error: derErr } = await supabase.from("content_derivatives").insert(rows);
@@ -78,6 +90,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, sourceId: src.id });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "unknown error" }, { status: 500 });
+    // ALTIJD JSON teruggeven
+    return NextResponse.json({ ok: false, error: e?.message ?? String(e) }, { status: 500 });
   }
 }
