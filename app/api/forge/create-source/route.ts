@@ -14,7 +14,7 @@ type Body = {
   slug?: string;
   summary?: string;
   canonicalUrl?: string;
-  variant?: "calm" | "spicy";
+  // variant wordt genegeerd; we gebruiken echte content
 };
 
 function utm(base: string | null, platform: string, slug: string | null) {
@@ -23,36 +23,55 @@ function utm(base: string | null, platform: string, slug: string | null) {
   return `${base}${sep}utm_source=${platform}&utm_medium=social&utm_campaign=timeline_alchemy&utm_content=${slug ?? "content"}`;
 }
 
+function normalizeText(s: string | null | undefined, max = 280) {
+  const clean = (s ?? "").replace(/\s+/g, " ").trim();
+  return clean.length > max ? clean.slice(0, max - 1) + "…" : clean;
+}
+
+function hashtagsFromSlug(slug: string | null | undefined, max = 3): string[] {
+  if (!slug) return [];
+  return slug
+    .toLowerCase()
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .slice(0, max)
+    .map(w => "#" + w.replace(/[^a-z0-9]/g, ""));
+}
+
 export async function GET() {
-  // snelle route-check
   return NextResponse.json({ ok: true, route: "create-source" });
 }
 
 export async function POST(req: Request) {
   try {
-    // env pas HIER lezen (niet top-level) zodat we nette JSON error kunnen geven
     const SUPABASE_URL = reqEnv("NEXT_PUBLIC_SUPABASE_URL");
     const SRK = reqEnv("SUPABASE_SERVICE_ROLE_KEY");
     const supabase = createClient(SUPABASE_URL, SRK, { auth: { persistSession: false } });
 
     const b = (await req.json()) as Body;
-    const title = (b.title ?? "").toString().trim();
+    const title = normalizeText(b.title, 180);
     if (!title) return NextResponse.json({ ok: false, error: "title is required" }, { status: 400 });
 
-    const slug = b.slug ? String(b.slug) : null;
-    const summary = b.summary ? String(b.summary) : null;
-    const canonicalUrl = b.canonicalUrl ? String(b.canonicalUrl) : null;
-    const variant: "calm" | "spicy" = b.variant === "spicy" ? "spicy" : "calm";
+    const slug = b.slug?.trim() || null;
+    const summary = normalizeText(b.summary, 500);
+    const canonicalUrl = b.canonicalUrl?.trim() || null;
 
     // 1) Source
     const { data: src, error: srcErr } = await supabase
       .from("content_sources")
-      .insert([{ title, slug, summary, canonical_url: canonicalUrl }])
-      .select("id, slug, canonical_url")
+      .insert([{
+        title,
+        slug,
+        summary: summary || null,
+        canonical_url: canonicalUrl,
+        json: {} // veilig i.c.m. NOT NULL
+      }])
+      .select("id, slug, canonical_url, summary, title")
       .single();
     if (srcErr) throw srcErr;
 
-    // 2) 5 socials
+    // 2) Payload uit échte content
+    const tags = hashtagsFromSlug(src.slug, 3);
     const platforms = [
       { platform: "x", kind: "caption" as const },
       { platform: "instagram", kind: "caption" as const },
@@ -61,28 +80,34 @@ export async function POST(req: Request) {
       { platform: "facebook", kind: "caption" as const },
     ];
 
-    const baseText =
-      variant === "spicy"
-        ? "Als je ophoudt met duwen, beweegt alles makkelijker. Presence ≠ passief: het is zuivere kracht."
-        : "Soms is niets doen het meest productieve. Eén adem. Presence.";
-
-    const rows = platforms.map((p) => {
+    const rows = platforms.map(p => {
       const link = utm(src.canonical_url as any, p.platform, src.slug);
-      const payload: any =
-        p.kind === "tiktok_script"
-          ? {
-              variant,
-              overlay: ["Fixen is de blokkade.", "Presence = power."],
-              script: 'Hook: “Wat als fixen je gevangen houdt?” | 1 paradox | 1 stap: 1 adem + 5s stilte | CTA',
-              cta_url: link,
-            }
-          : {
-              variant,
-              caption: `${baseText}${link ? `\n→ Lees: ${link}` : ""}`,
-              hashtags: ["#presence", "#nonduality", "#inneralchemy"],
-              cta_url: link,
-            };
-      return { source_id: src.id, platform: p.platform, kind: p.kind, status: "draft", payload };
+      if (p.kind === "tiktok_script") {
+        return {
+          source_id: src.id,
+          platform: p.platform,
+          kind: p.kind,
+          status: "draft",
+          payload: {
+            script: `Hook: ${src.title}\n\n${src.summary || "Kernboodschap in 1-2 zinnen."}\n\nCTA: ${link ?? ""}`.trim(),
+            overlay: [src.title].concat(src.summary ? [normalizeText(src.summary, 40)] : []),
+            cta_url: link
+          }
+        };
+      } else {
+        const caption = `${src.summary || src.title}${link ? `\n→ Lees: ${link}` : ""}`.trim();
+        return {
+          source_id: src.id,
+          platform: p.platform,
+          kind: p.kind,
+          status: "draft",
+          payload: {
+            caption,
+            hashtags: tags,
+            cta_url: link
+          }
+        };
+      }
     });
 
     const { error: derErr } = await supabase.from("content_derivatives").insert(rows);
@@ -90,7 +115,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, sourceId: src.id });
   } catch (e: any) {
-    // ALTIJD JSON teruggeven
     return NextResponse.json({ ok: false, error: e?.message ?? String(e) }, { status: 500 });
   }
 }
