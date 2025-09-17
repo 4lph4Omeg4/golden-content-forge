@@ -2,10 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-// app/forge/page.tsx
-import ForgeShell from "../../components/ForgeShell";
-import PlatformBadge from "../../components/PlatformBadge";
-
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,33 +11,31 @@ const supabase = createClient(
 type Source = { id: string; title: string; slug: string | null; summary: string | null; created_at: string; };
 type Derivative = { id: string; platform: string | null; kind: string | null; status: string | null; created_at: string; payload: any; };
 
-export default function ForgeViewer() {
+export default function ForgePage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [derivatives, setDerivatives] = useState<Derivative[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // bronnen ophalen
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("content_sources")
         .select("id,title,slug,summary,created_at")
         .order("created_at", { ascending: false })
         .limit(25);
-      if (!error && data) {
+      if (data && data.length) {
         setSources(data);
-        if (data.length > 0) setSelectedId(data[0].id);
+        setSelectedId(data[0].id);
       }
       setLoading(false);
     })();
   }, []);
 
-  // socials voor geselecteerde bron
   useEffect(() => {
     if (!selectedId) return;
     (async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("content_derivatives")
         .select("id,platform,kind,status,created_at,payload")
         .eq("source_id", selectedId)
@@ -49,92 +43,91 @@ export default function ForgeViewer() {
         .order("platform", { ascending: true })
         .order("kind", { ascending: true })
         .order("created_at", { ascending: false });
-      if (!error && data) setDerivatives(data as any);
+      if (data) setDerivatives(data as any);
     })();
   }, [selectedId]);
 
-  if (loading) {
-    return (
-      <ForgeShell title="Golden Content Forge" subtitle="Preview">
-        <div className="rounded-xl border bg-white p-6">⏳ Laden…</div>
-      </ForgeShell>
-    );
-  }
-
-  const selected = sources.find(s => s.id === selectedId) || null;
-
   return (
-    <ForgeShell title="Golden Content Forge" subtitle="Preview van opgeslagen content">
-      {/* bronselector */}
-      <section className="rounded-xl border bg-white p-4">
-        <div className="flex flex-wrap gap-2">
-          {sources.map(s => (
-            <button
-              key={s.id}
-              onClick={() => setSelectedId(s.id)}
-              className={`px-3 py-1 rounded-lg border text-sm transition ${
-                s.id === selectedId
-                  ? "bg-black text-white"
-                  : "bg-white hover:bg-gray-50"
-              }`}
-              title={s.slug ?? s.id}
-            >
-              {s.title || s.slug || s.id.slice(0,8)}
-            </button>
-          ))}
-        </div>
-      </section>
+    <main>
+      <h1>Golden Content Forge</h1>
+      <p>Preview van opgeslagen content</p>
 
-      {/* bron kop */}
-      {selected && (
-        <section className="rounded-xl border bg-white p-6 space-y-2">
-          <h2 className="text-xl font-bold">{selected.title}</h2>
-          {selected.summary && <p className="text-gray-600">{selected.summary}</p>}
-          <p className="text-xs text-gray-400">Bron-ID: {selected.id}</p>
-        </section>
-      )}
+      {loading ? (
+        <p>Laden…</p>
+      ) : (
+        <>
+          {/* Bronnen-keuze (simpele knoppen, geen styling-klassen) */}
+          <section>
+            {sources.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setSelectedId(s.id)}
+                title={s.slug ?? s.id}
+                style={{
+                  padding: "8px 12px",
+                  border: "1px solid currentColor",
+                  marginRight: 8,
+                  marginBottom: 8,
+                  background: s.id === selectedId ? "currentColor" : "transparent",
+                  color: s.id === selectedId ? "#fff" : "inherit",
+                  cursor: "pointer",
+                }}
+              >
+                {s.title || s.slug || s.id.slice(0, 8)}
+              </button>
+            ))}
+          </section>
 
-      {/* socials */}
-      <section className="space-y-4">
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Social posts</h3>
-        {derivatives.length === 0 ? (
-          <div className="rounded-xl border bg-white p-6 text-gray-600">Nog geen socials voor deze bron.</div>
-        ) : (
-          derivatives.map(d => {
-            const payload = d.payload || {};
-            const text = payload.caption ?? payload.script ?? "";
-            const hashtags = Array.isArray(payload.hashtags) ? payload.hashtags.join(" ") : "";
-            const link = payload.cta_url ?? "";
+          <hr />
+
+          {/* Geselecteerde bron */}
+          {(() => {
+            const s = sources.find((x) => x.id === selectedId);
+            if (!s) return null;
             return (
-              <article key={d.id} className="rounded-xl border bg-white p-5 shadow-sm">
-                <div className="flex items-center justify-between gap-3 text-sm">
-                  <div className="flex items-center gap-2">
-                    <PlatformBadge platform={d.platform ?? undefined} />
-                    <span className="text-gray-500">{d.kind}</span>
-                  </div>
-                  <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">{d.status}</span>
-                </div>
-
-                {text && <p className="mt-3 whitespace-pre-line leading-relaxed">{text}</p>}
-
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  {hashtags && <span className="text-xs text-gray-500">{hashtags}</span>}
-                  {link && (
-                    <a
-                      className="text-sm text-blue-600 hover:underline break-all"
-                      href={link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      🔗 {link}
-                    </a>
-                  )}
-                </div>
-              </article>
+              <section>
+                <h2>{s.title}</h2>
+                {s.summary && <p>{s.summary}</p>}
+                <small>Bron-ID: {s.id}</small>
+              </section>
             );
-          })
-        )}
-      </section>
-    </ForgeShell>
+          })()}
+
+          <hr />
+
+          {/* Social posts */}
+          <section>
+            <h3>Social posts</h3>
+            {derivatives.length === 0 ? (
+              <p>Nog geen socials voor deze bron.</p>
+            ) : (
+              derivatives.map((d) => {
+                const payload = d.payload || {};
+                const text = payload.caption ?? payload.script ?? "";
+                const hashtags = Array.isArray(payload.hashtags) ? payload.hashtags.join(" ") : "";
+                const link = payload.cta_url ?? "";
+                return (
+                  <article key={d.id}>
+                    <p>
+                      <strong>{(d.platform ?? "generic").toUpperCase()}</strong> · {d.kind} · {d.status}
+                    </p>
+                    {text && <p style={{ whiteSpace: "pre-wrap" }}>{text}</p>}
+                    {hashtags && <p><small>{hashtags}</small></p>}
+                    {link && (
+                      <p>
+                        <a href={link} target="_blank" rel="noopener noreferrer">
+                          {link}
+                        </a>
+                      </p>
+                    )}
+                    <hr />
+                  </article>
+                );
+              })
+            )}
+          </section>
+        </>
+      )}
+    </main>
   );
 }
