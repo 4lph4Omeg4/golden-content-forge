@@ -53,26 +53,68 @@ export default function GoldenContentForgeUI() {
       const data: any = ct.includes("application/json") ? await res.json() : await res.text();
 
       // 2) Velden uit webhook
-      const title: string =
-        (data?.title as string) ??
-        (data?.blog?.title as string) ??
-        (data?.meta?.title as string) ??
-        "Untitled";
+     // -- Robuuste extractie: pak title/summary uit bekende paden of destilleer het uit blog HTML
+function pick(obj: any, path: string) {
+  return path.split(".").reduce((o, k) => (o && o[k] != null ? o[k] : undefined), obj);
+}
+function stripHtml(s: any) {
+  const str = typeof s === "string" ? s : "";
+  const div = document.createElement("div");
+  div.innerHTML = str;
+  return (div.textContent || div.innerText || "").replace(/\s+/g, " ").trim();
+}
+function firstWords(s: string, n = 12) {
+  return s.trim().split(/\s+/).slice(0, n).join(" ");
+}
 
-      const slug: string | undefined =
-        (data?.slug as string) ?? (data?.blog?.slug as string) ?? undefined;
+// Ruwe blogtekst (voor fallback)
+const rawBlog =
+  pick(data, "blog.content") ??
+  pick(data, "content") ??
+  pick(data, "html") ??
+  "";
+const blogText = stripHtml(rawBlog);
 
-      const summary: string | undefined =
-        (data?.summary as string) ??
-        (data?.blog?.summary as string) ??
-        (data?.meta?.description as string) ??
-        undefined;
+// Titel: eerst bekende velden, anders eerste woorden uit blog
+const title =
+  ([
+    "title",
+    "blog.title",
+    "meta.title",
+    "seo.title",
+    "meta.seoTitle",
+    "meta.headline",
+    "post.title",
+  ]
+    .map((p) => pick(data, p))
+    .find((v) => typeof v === "string" && v.trim().length > 0) as string) ||
+  (blogText ? firstWords(blogText, 12) : "") ||
+  "Draft";
 
-      const canonicalUrl: string | undefined =
-        (data?.canonical_url as string) ??
-        (data?.blog?.canonical_url as string) ??
-        (data?.meta?.url as string) ??
-        (slug ? `${(process.env.NEXT_PUBLIC_SITE_URL || window.location.origin)}/blog/${slug}` : undefined);
+// Summary: bekende velden, anders de eerste ~220 chars van blog
+const summary =
+  ([
+    "summary",
+    "blog.summary",
+    "meta.description",
+    "seo.description",
+    "excerpt",
+    "blog.excerpt",
+  ]
+    .map((p) => pick(data, p))
+    .find((v) => typeof v === "string" && v.trim().length > 0) as string) ||
+  (blogText ? blogText.slice(0, 220) : "");
+
+// Slug & canonical
+const slug =
+  (["slug", "blog.slug"].map((p) => pick(data, p)).find((v) => typeof v === "string" && v.trim()) as string) ||
+  undefined;
+
+const canonicalUrl =
+  (["canonical_url", "blog.canonical_url", "meta.url"]
+    .map((p) => pick(data, p))
+    .find((v) => typeof v === "string" && v.trim()) as string) ||
+  (slug ? `${(process.env.NEXT_PUBLIC_SITE_URL || window.location.origin)}/blog/${slug}` : undefined);
 
       // 3) Previews
       const metaText =
