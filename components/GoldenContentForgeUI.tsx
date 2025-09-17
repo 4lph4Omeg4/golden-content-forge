@@ -2,22 +2,46 @@
 
 import { useState } from "react";
 
-/* ---- Brand header met logo + brede fallback ---- */
+/* ---- Brand header: clean fallback, geen alt-tekst-glitch ---- */
+import { useState } from "react";
+
 function BrandTitle() {
   const [i, setI] = useState(0);
+  const [ok, setOk] = useState(false);
+
+  // probeer eerst jouw vaste pad; daarna brede fallbacks
   const candidates = [
-    "/gcf-logo.svg",
-    "/gcf-logo.png",
     "/brands/forge.svg",
     "/brands/forge.png",
-    "/brands/golden-content-forge.svg",
-    "/brands/golden-content-forge.png",
-    "/brands/gcf.svg",
-    "/brands/gcf.png",
+    "/gcf-logo.svg",
+    "/gcf-logo.png",
     "/logo.svg",
     "/logo.png",
   ];
   const src = i < candidates.length ? candidates[i] : null;
+
+  return (
+    <div className="flex items-center gap-3">
+      {src && (
+        <img
+          src={`${src}?v=1`}           // mini cache-buster
+          alt=""                        // alt leeg = geen lelijke tekst bij fout
+          width={28}
+          height={28}
+          className={`shrink-0 rounded-md ${ok ? "opacity-100" : "opacity-0"}`}
+          onLoad={() => setOk(true)}    // pas tonen als 'ie echt geladen is
+          onError={() => { setOk(false); setI(n => n + 1); }} // volgende kandidaat
+        />
+      )}
+      <h1 aria-label="Golden Content Forge" className="text-3xl font-extrabold tracking-tight">
+        <span className="text-amber-300">Golden</span>{" "}
+        <span className="text-amber-100">Content Forge</span>
+      </h1>
+    </div>
+  );
+}
+/* ------------------------------------------------------------- */
+
 
   return (
     <div className="flex items-center gap-3">
