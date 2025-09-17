@@ -4,7 +4,7 @@ import { useState } from "react";
 
 /* ---- Brand header met logo + brede fallback ---- */
 function BrandTitle() {
-  const [i, setI] = React.useState(0);
+  const [i, setI] = useState(0);
   const candidates = [
     "/gcf-logo.svg",
     "/gcf-logo.png",
