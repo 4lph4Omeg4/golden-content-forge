@@ -8,11 +8,38 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+/* ---- Brand header met logo + fallback ---- */
+function BrandTitle() {
+  const [i, setI] = useState(0);
+  const srcs = ["/gcf-logo.svg", "/gcf-logo.png", "/logo.svg", "/logo.png"];
+  const src = i < srcs.length ? srcs[i] : null;
+
+  return (
+    <div className="flex items-center gap-3">
+      {src ? (
+        <img
+          src={src}
+          alt="Golden Content Forge"
+          width={28}
+          height={28}
+          className="shrink-0 rounded-md"
+          onError={() => setI((n) => n + 1)}
+        />
+      ) : null}
+      <h1 className="text-3xl font-extrabold tracking-tight">
+        <span className="text-amber-300">Golden</span>{" "}
+        <span className="text-amber-100">Content Forge</span>
+      </h1>
+    </div>
+  );
+}
+/* ----------------------------------------- */
+
 // ---------- UI helpers ----------
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={["rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5","overflow-hidden",className].join(" ")}>
-      {children}
+    <div className={["rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5","overflow-hidden"].join(" ")}>
+      <div className={className}>{children}</div>
     </div>
   );
 }
@@ -42,9 +69,7 @@ function CopyBtn({ text }: { text: string }) {
 function ActionBtn({ children, onClick, disabled, title }: { children: React.ReactNode; onClick: () => void; disabled?: boolean; title?: string; }) {
   return (
     <button onClick={onClick} disabled={disabled} title={title} type="button"
-      className={["rounded-lg border px-2 py-1 text-xs",disabled?"border-slate-700/60 bg-slate-800/40 text-slate-500 cursor-not-allowed":"border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-800"].join(" ")}>
-      {children}
-    </button>
+      className={["rounded-lg border px-2 py-1 text-xs",disabled?"border-slate-700/60 bg-slate-800/40 text-slate-500 cursor-not-allowed":"border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-800"].join(" ")}>{children}</button>
   );
 }
 // -------------------------------------------------------------------
@@ -59,22 +84,7 @@ export default function ForgePage() {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // --- nieuw: local form state
-  const [form, setForm] = useState({ title: "", slug: "", summary: "", canonicalUrl: "", variant: "calm" as "calm"|"spicy" });
-  const [creating, setCreating] = useState(false);
-
   // bronnen ophalen
-  async function refreshSources(selectNewId?: string) {
-    const { data } = await supabase
-      .from("content_sources")
-      .select("id,title,slug,summary,created_at")
-      .order("created_at", { ascending: false })
-      .limit(25);
-    setSources(data || []);
-    if (selectNewId) setSelectedId(selectNewId);
-    else if (!selectedId && data?.length) setSelectedId(data[0].id);
-  }
-
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -84,8 +94,10 @@ export default function ForgePage() {
         .order("created_at", { ascending: false })
         .limit(25);
       if (!mounted) return;
-      setSources(data || []);
-      if (data?.length) setSelectedId((prev) => prev ?? data[0].id);
+      if (data?.length) {
+        setSources(data);
+        setSelectedId((prev) => prev ?? data[0].id);
+      }
       setLoading(false);
     })();
     return () => { mounted = false; };
@@ -100,7 +112,7 @@ export default function ForgePage() {
         .from("content_derivatives")
         .select("id,platform,kind,status,created_at,payload")
         .eq("source_id", selectedId)
-        .in("status", ["draft","review","approved","scheduled","posted"])
+        .in("status", ["draft", "review", "approved", "scheduled", "posted"])
         .order("platform", { ascending: true })
         .order("kind", { ascending: true })
         .order("created_at", { ascending: false });
@@ -114,6 +126,7 @@ export default function ForgePage() {
       setUpdatingId(id);
       const { error } = await supabase.from("content_derivatives").update({ status }).eq("id", id);
       if (error) throw error;
+      // laat staan na refresh (jouw keuze); UI update minimaal
       setDerivatives((prev) => prev.map((d) => (d.id === id ? { ...d, status } : d)));
     } catch (e) {
       alert("Kon status niet updaten 😕");
@@ -123,52 +136,10 @@ export default function ForgePage() {
     }
   }
 
-  // --- nieuw: submit nieuwe source + auto-derivatives
-async function createSource(e: React.FormEvent) {
-  e.preventDefault();
-  if (!form.title.trim()) return alert("Titel is verplicht");
-  setCreating(true);
-  try {
-    const res = await fetch("/api/forge/create-source", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: form.title.trim(),
-        slug: form.slug.trim() || undefined,
-        summary: form.summary.trim() || undefined,
-        canonicalUrl: form.canonicalUrl.trim() || undefined,
-        variant: form.variant,
-      }),
-    });
-
-    // Probeer JSON; zo niet, lees text (voorkomt “Unexpected token <”)
-    let json: any = null;
-    const ct = res.headers.get("content-type") || "";
-    if (ct.includes("application/json")) {
-      json = await res.json();
-    } else {
-      const text = await res.text();
-      throw new Error(text.slice(0, 200));
-    }
-
-    if (!res.ok || !json?.ok) throw new Error(json?.error || "create failed");
-
-    setForm({ title: "", slug: "", summary: "", canonicalUrl: "", variant: form.variant });
-    await refreshSources(json.sourceId);
-  } catch (err: any) {
-    alert("Aanmaken mislukt: " + (err?.message ?? "unknown"));
-    console.error(err);
-  } finally {
-    setCreating(false);
-  }
-}
-
-
   if (loading) {
     return (
       <main className="mx-auto max-w-6xl px-4 py-6 text-slate-200">
-        <h1 className="text-3xl font-extrabold tracking-tight text-amber-300">Golden Content Forge</h1>
-        <p className="mt-1 text-slate-400">Preview van opgeslagen content</p>
+        <BrandTitle />
         <Card className="mt-6">Laden…</Card>
       </main>
     );
@@ -178,96 +149,33 @@ async function createSource(e: React.FormEvent) {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 text-slate-200">
-      <h1 className="text-3xl font-extrabold tracking-tight text-amber-300">Golden Content Forge</h1>
-      <p className="mt-1 text-slate-400">Preview + Create</p>
+      <BrandTitle />
 
-      {/* NIEUW: Create Source formulier */}
-      <Card className="mt-6">
-        <form onSubmit={createSource} className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div className="col-span-1 md:col-span-2">
-            <label className="block text-xs text-slate-400 mb-1">Title *</label>
-            <input
-              className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 outline-none"
-              placeholder="Presence over probleemoplossing"
-              value={form.title} onChange={(e)=>setForm({...form,title:e.target.value})}
-            />
+      {/* Bronselector (alleen tonen als er > 1 bron is) */}
+      {sources.length > 1 && (
+        <Card className="mt-6">
+          <div className="flex flex-wrap gap-2">
+            {sources.map((s) => {
+              const active = s.id === selectedId;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setSelectedId(s.id)}
+                  className={[
+                    "rounded-xl border px-3 py-1.5 text-sm",
+                    active
+                      ? "border-slate-600/60 bg-slate-800/60 text-slate-200"
+                      : "border-slate-600/60 bg-slate-800/60 text-slate-200 hover:bg-slate-800",
+                  ].join(" ")}
+                  title={s.slug ?? s.id}
+                >
+                  {s.title || s.slug || s.id.slice(0, 8)}
+                </button>
+              );
+            })}
           </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Slug</label>
-            <input
-              className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 outline-none"
-              placeholder="presence-over-probleemoplossing"
-              value={form.slug} onChange={(e)=>setForm({...form,slug:e.target.value})}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Canonical URL</label>
-            <input
-              className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 outline-none"
-              placeholder="https://example.com/blog/presence-over-probleemoplossing"
-              value={form.canonicalUrl} onChange={(e)=>setForm({...form,canonicalUrl:e.target.value})}
-            />
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-xs text-slate-400 mb-1">Summary</label>
-            <textarea
-              className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 outline-none"
-              rows={3}
-              placeholder="Korte samenvatting voor context in de Forge…"
-              value={form.summary} onChange={(e)=>setForm({...form,summary:e.target.value})}
-            />
-          </div>
-          <div className="flex items-center gap-3">
-            <label className="text-xs text-slate-400">Variant</label>
-            <select
-              className="rounded-lg border border-slate-600 bg-slate-800 px-2 py-1 text-sm text-slate-100"
-              value={form.variant} onChange={(e)=>setForm({...form,variant:e.target.value as "calm"|"spicy"})}
-            >
-              <option value="calm">Calm</option>
-              <option value="spicy">Spicy</option>
-            </select>
-          </div>
-          <div className="md:col-span-2">
-            <button
-              type="submit"
-              disabled={creating || !form.title.trim()}
-              className={[
-                "rounded-xl border px-3 py-2 text-sm",
-                creating ? "border-slate-700/60 bg-slate-800/40 text-slate-500 cursor-not-allowed" : "border-amber-400/40 bg-amber-400/10 text-amber-200 hover:bg-amber-400/20",
-              ].join(" ")}
-            >
-              {creating ? "Aanmaken…" : "Create Source + 5 socials"}
-            </button>
-          </div>
-        </form>
-      </Card>
-
-{/* Bronselector (alleen tonen als er > 1 bron is) */}
-{sources.length > 1 && (
-  <Card className="mt-6">
-    <div className="flex flex-wrap gap-2">
-      {sources.map((s) => {
-        const active = s.id === selectedId;
-        return (
-          <button
-            key={s.id}
-            onClick={() => setSelectedId(s.id)}
-            className={[
-              "rounded-xl border px-3 py-1.5 text-sm",
-              active
-                ? "border-slate-600/60 bg-slate-800/60 text-slate-200" // geen gele highlight meer
-                : "border-slate-600/60 bg-slate-800/60 text-slate-200 hover:bg-slate-800",
-            ].join(" ")}
-            title={s.slug ?? s.id}
-          >
-            {s.title || s.slug || s.id.slice(0, 8)}
-          </button>
-        );
-      })}
-    </div>
-  </Card>
-)}
-
+        </Card>
+      )}
 
       {/* Geselecteerde bron */}
       {selected && (
