@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import ForgeShell from "../components/ForgeShell";
-import PlatformBadge from "../components/PlatformBadge";
+// app/forge/page.tsx
+import ForgeShell from "../../components/ForgeShell";
+import PlatformBadge from "../../components/PlatformBadge";
+
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
