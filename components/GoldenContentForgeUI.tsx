@@ -47,11 +47,7 @@ export default function GoldenContentForgeUI() {
 
     try {
       // 1) Webhook aanroepen (hardcoded URL)
-      const res = await fetch(WEBHOOK, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
-      });
+     const res = await fetch("/api/n8n/forge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }) });
 
       const ct = res.headers.get("content-type") || "";
       const data: any = ct.includes("application/json") ? await res.json() : await res.text();
