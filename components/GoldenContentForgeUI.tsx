@@ -26,115 +26,129 @@ function BrandTitle() {
 }
 /* --------------------------------------- */
 
-const WEBHOOK = "https://sh4m4ni4k.app.n8n.cloud/webhook/paint"
+/** ✏️ Vul je vaste webhook hieronder in (geen env gedoe). */
+const WEBHOOK = "https://sh4m4ni4k.app.n8n.cloud/webhook/paint";
+
+/** Helper om netjes te loggen in de UI */
+function useLog() {
+  const [log, setLog] = useState<string[]>([]);
+  return {
+    log,
+    push(line: string) {
+      setLog((l) => [new Date().toLocaleTimeString() + " — " + line, ...l].slice(0, 50));
+    },
+    clear() {
+      setLog([]);
+    },
+  };
+}
 
 export default function GoldenContentForgeUI() {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [metaPreview, setMetaPreview] = useState<string>("");
   const [blogPreview, setBlogPreview] = useState<string>("");
-  const [log, setLog] = useState<string[]>([]);
-
-  function pushLog(line: string) {
-    setLog((l) => [new Date().toLocaleTimeString() + " — " + line, ...l].slice(0, 50));
-  }
+  const { log, push } = useLog();
 
   async function handleForge() {
-    if (!WEBHOOK) return alert("NEXT_PUBLIC_N8N_WEBHOOK_URL ontbreekt.");
+    if (!WEBHOOK || WEBHOOK.includes("<jouw-n8n>")) {
+      return alert("Webhook URL ontbreekt of is nog niet ingevuld.");
+    }
     if (!prompt.trim()) return alert("Schrijf eerst een korte scene/omschrijving.");
+
     setLoading(true);
-    pushLog("Start forge…");
+    push("Start forge…");
 
     try {
-      // 1) Webhook aanroepen (hardcoded URL)
-     const res = await fetch("/api/n8n/forge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }) });
-
+      // 1) Webhook aanroepen
+      const res = await fetch(WEBHOOK, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
       const ct = res.headers.get("content-type") || "";
       const data: any = ct.includes("application/json") ? await res.json() : await res.text();
 
-      // 2) Velden uit webhook
-     // -- Robuuste extractie: pak title/summary uit bekende paden of destilleer het uit blog HTML
-function pick(obj: any, path: string) {
-  return path.split(".").reduce((o, k) => (o && o[k] != null ? o[k] : undefined), obj);
-}
-function stripHtml(s: any) {
-  const str = typeof s === "string" ? s : "";
-  const div = document.createElement("div");
-  div.innerHTML = str;
-  return (div.textContent || div.innerText || "").replace(/\s+/g, " ").trim();
-}
-function firstWords(s: string, n = 12) {
-  return s.trim().split(/\s+/).slice(0, n).join(" ");
-}
+      // 2) Helpers (scoped → geen naam-conflicten)
+      const pick = (obj: any, path: string) =>
+        path.split(".").reduce((o, k) => (o && o[k] != null ? o[k] : undefined), obj);
+      const stripHtml = (val: any) => {
+        const s = typeof val === "string" ? val : "";
+        const div = document.createElement("div");
+        div.innerHTML = s;
+        return (div.textContent || div.innerText || "").replace(/\s+/g, " ").trim();
+      };
+      const firstWords = (s: string, n = 12) => s.trim().split(/\s+/).slice(0, n).join(" ");
 
-// Ruwe blogtekst (voor fallback)
-const rawBlog =
-  pick(data, "blog.content") ??
-  pick(data, "content") ??
-  pick(data, "html") ??
-  "";
-const blogText = stripHtml(rawBlog);
+      // 3) Robuuste extractie (valt terug op blogtekst i.p.v. "Untitled")
+      const rawBlogHtml =
+        pick(data, "blog.content") ??
+        pick(data, "content") ??
+        pick(data, "html") ??
+        "";
+      const plainBlogText = stripHtml(rawBlogHtml);
 
-// Titel: eerst bekende velden, anders eerste woorden uit blog
-const title =
-  ([
-    "title",
-    "blog.title",
-    "meta.title",
-    "seo.title",
-    "meta.seoTitle",
-    "meta.headline",
-    "post.title",
-  ]
-    .map((p) => pick(data, p))
-    .find((v) => typeof v === "string" && v.trim().length > 0) as string) ||
-  (blogText ? firstWords(blogText, 12) : "") ||
-  "Draft";
+      const title =
+        ([
+          "title",
+          "blog.title",
+          "meta.title",
+          "seo.title",
+          "meta.seoTitle",
+          "meta.headline",
+          "post.title",
+        ]
+          .map((p) => pick(data, p))
+          .find((v) => typeof v === "string" && v.trim().length > 0) as string) ||
+        (plainBlogText ? firstWords(plainBlogText, 12) : "") ||
+        "Draft";
 
-// Summary: bekende velden, anders de eerste ~220 chars van blog
-const summary =
-  ([
-    "summary",
-    "blog.summary",
-    "meta.description",
-    "seo.description",
-    "excerpt",
-    "blog.excerpt",
-  ]
-    .map((p) => pick(data, p))
-    .find((v) => typeof v === "string" && v.trim().length > 0) as string) ||
-  (blogText ? blogText.slice(0, 220) : "");
+      const summary =
+        ([
+          "summary",
+          "blog.summary",
+          "meta.description",
+          "seo.description",
+          "excerpt",
+          "blog.excerpt",
+        ]
+          .map((p) => pick(data, p))
+          .find((v) => typeof v === "string" && v.trim().length > 0) as string) ||
+        (plainBlogText ? plainBlogText.slice(0, 220) : "");
 
-// Slug & canonical
-const slug =
-  (["slug", "blog.slug"].map((p) => pick(data, p)).find((v) => typeof v === "string" && v.trim()) as string) ||
-  undefined;
+      const slug =
+        (["slug", "blog.slug"]
+          .map((p) => pick(data, p))
+          .find((v) => typeof v === "string" && v.trim()) as string) || undefined;
 
-const canonicalUrl =
-  (["canonical_url", "blog.canonical_url", "meta.url"]
-    .map((p) => pick(data, p))
-    .find((v) => typeof v === "string" && v.trim()) as string) ||
-  (slug ? `${(process.env.NEXT_PUBLIC_SITE_URL || window.location.origin)}/blog/${slug}` : undefined);
+      const canonicalUrl =
+        (["canonical_url", "blog.canonical_url", "meta.url"]
+          .map((p) => pick(data, p))
+          .find((v) => typeof v === "string" && v.trim()) as string) ||
+        (slug
+          ? `${(process.env.NEXT_PUBLIC_SITE_URL || window.location.origin)}/blog/${slug}`
+          : undefined);
 
-      // 3) Previews
-      const metaText =
+      // 4) Previews in UI
+      const metaPreviewText =
         typeof data?.meta === "string"
           ? data.meta
           : data?.meta
           ? JSON.stringify(data.meta, null, 2)
           : summary || "(geen meta ontvangen)";
-      const blogText =
+
+      const blogPreviewText =
         typeof data?.blog === "string"
           ? data.blog
           : data?.blog?.content
           ? data.blog.content
           : JSON.stringify(data?.blog ?? data, null, 2);
 
-      setMetaPreview(metaText);
-      setBlogPreview(blogText);
-      pushLog("Webhook OK — blog ontvangen.");
+      setMetaPreview(metaPreviewText);
+      setBlogPreview(blogPreviewText);
+      push("Webhook OK — blog ontvangen.");
 
-      // 4) Forge informeren
+      // 5) Forge laten aanmaken (source + 5 drafts)
       const forgeRes = await fetch("/api/forge/create-source", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -143,10 +157,11 @@ const canonicalUrl =
       const forgeCt = forgeRes.headers.get("content-type") || "";
       const forgeJson = forgeCt.includes("application/json") ? await forgeRes.json() : null;
       if (!forgeRes.ok || !forgeJson?.ok) throw new Error(forgeJson?.error || "Forge create failed");
-      pushLog("Forge: Source + socials aangemaakt.");
+
+      push("Forge: Source + socials aangemaakt.");
     } catch (e: any) {
       console.error(e);
-      pushLog("Fout: " + (e?.message || "onbekend"));
+      push("Fout: " + (e?.message || "onbekend"));
       alert("Er ging iets mis: " + (e?.message || "onbekend"));
     } finally {
       setLoading(false);
@@ -157,7 +172,7 @@ const canonicalUrl =
     <main className="mx-auto max-w-6xl px-4 py-6 text-slate-200">
       <BrandTitle />
 
-      {/* Prompt + knop (geen webhook input meer) */}
+      {/* Prompt + knop (hardcoded webhook; geen inputveld nodig) */}
       <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5 md:col-span-2">
           <label className="block text-sm text-slate-400 mb-2">Paint your scene</label>
