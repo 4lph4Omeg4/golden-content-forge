@@ -9,12 +9,23 @@ function reqEnv(name: string) {
   return v;
 }
 
+// simpele, veilige slugify
+function slugify(input: string, max = 80) {
+  const s = (input || "")
+    .normalize("NFKD")                 // strip accents
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+  const trimmed = s.slice(0, max);
+  return trimmed || `post-${Date.now().toString(36)}`;
+}
+
 type Body = {
   title: string;
   slug?: string;
   summary?: string;
   canonicalUrl?: string;
-  // variant wordt genegeerd; we gebruiken echte content
 };
 
 function utm(base: string | null, platform: string, slug: string | null) {
@@ -23,19 +34,9 @@ function utm(base: string | null, platform: string, slug: string | null) {
   return `${base}${sep}utm_source=${platform}&utm_medium=social&utm_campaign=timeline_alchemy&utm_content=${slug ?? "content"}`;
 }
 
-function normalizeText(s: string | null | undefined, max = 280) {
+function normalizeText(s: string | null | undefined, max = 500) {
   const clean = (s ?? "").replace(/\s+/g, " ").trim();
   return clean.length > max ? clean.slice(0, max - 1) + "…" : clean;
-}
-
-function hashtagsFromSlug(slug: string | null | undefined, max = 3): string[] {
-  if (!slug) return [];
-  return slug
-    .toLowerCase()
-    .split(/[-_]+/)
-    .filter(Boolean)
-    .slice(0, max)
-    .map(w => "#" + w.replace(/[^a-z0-9]/g, ""));
 }
 
 export async function GET() {
@@ -49,11 +50,15 @@ export async function POST(req: Request) {
     const supabase = createClient(SUPABASE_URL, SRK, { auth: { persistSession: false } });
 
     const b = (await req.json()) as Body;
+
     const title = normalizeText(b.title, 180);
     if (!title) return NextResponse.json({ ok: false, error: "title is required" }, { status: 400 });
 
-    const slug = b.slug?.trim() || null;
-    const summary = normalizeText(b.summary, 500);
+    // 🔧 altijd een geldige slug maken
+    const incomingSlug = (b.slug ?? "").trim();
+    const safeSlug = incomingSlug || slugify(title);
+
+    const summary = normalizeText(b.summary, 500) || null;
     const canonicalUrl = b.canonicalUrl?.trim() || null;
 
     // 1) Source
@@ -61,23 +66,22 @@ export async function POST(req: Request) {
       .from("content_sources")
       .insert([{
         title,
-        slug,
-        summary: summary || null,
+        slug: safeSlug,               // <-- nooit null
+        summary,
         canonical_url: canonicalUrl,
-        json: {} // veilig i.c.m. NOT NULL
+        json: {}                      // veilig i.c.m. NOT NULL
       }])
       .select("id, slug, canonical_url, summary, title")
       .single();
     if (srcErr) throw srcErr;
 
-    // 2) Payload uit échte content
-    const tags = hashtagsFromSlug(src.slug, 3);
+    // 2) 5 socials uit echte content
     const platforms = [
-      { platform: "x", kind: "caption" as const },
+      { platform: "x",         kind: "caption" as const },
       { platform: "instagram", kind: "caption" as const },
-      { platform: "tiktok", kind: "tiktok_script" as const },
-      { platform: "linkedin", kind: "caption" as const },
-      { platform: "facebook", kind: "caption" as const },
+      { platform: "tiktok",    kind: "tiktok_script" as const },
+      { platform: "linkedin",  kind: "caption" as const },
+      { platform: "facebook",  kind: "caption" as const },
     ];
 
     const rows = platforms.map(p => {
@@ -89,7 +93,7 @@ export async function POST(req: Request) {
           kind: p.kind,
           status: "draft",
           payload: {
-            script: `Hook: ${src.title}\n\n${src.summary || "Kernboodschap in 1-2 zinnen."}\n\nCTA: ${link ?? ""}`.trim(),
+            script: `Hook: ${src.title}\n\n${src.summary || "Kern in 1–2 zinnen."}\n\nCTA: ${link ?? ""}`.trim(),
             overlay: [src.title].concat(src.summary ? [normalizeText(src.summary, 40)] : []),
             cta_url: link
           }
@@ -101,11 +105,7 @@ export async function POST(req: Request) {
           platform: p.platform,
           kind: p.kind,
           status: "draft",
-          payload: {
-            caption,
-            hashtags: tags,
-            cta_url: link
-          }
+          payload: { caption, hashtags: [], cta_url: link }
         };
       }
     });
