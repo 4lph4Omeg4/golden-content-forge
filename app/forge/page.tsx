@@ -8,13 +8,13 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// ---------- UI helpers (stabiel, zelfde stijl als je site) ----------
+// ---------- UI helpers ----------
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <div
       className={[
         "rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5",
-        "overflow-hidden", // geen tekst die uit de card loopt
+        "overflow-hidden",
         className,
       ].join(" ")}
     >
@@ -42,7 +42,6 @@ function LogoBadge({ platform, label }: { platform?: string | null; label?: stri
   }
   const svg = `/brands/${base}.svg`;
   const png = `/brands/${base}.png`;
-
   return (
     <span className="inline-flex items-center gap-2 rounded-full border border-slate-600/70 bg-slate-800/60 px-2 py-0.5">
       <img
@@ -58,7 +57,7 @@ function LogoBadge({ platform, label }: { platform?: string | null; label?: stri
   );
 }
 
-// Kleine copy-knop (werkt met Clipboard API + fallback)
+// Copy-knop (Clipboard API + fallback)
 function CopyBtn({ text }: { text: string }) {
   async function copy() {
     try {
@@ -87,6 +86,36 @@ function CopyBtn({ text }: { text: string }) {
     </button>
   );
 }
+
+// Kleine actieknop
+function ActionBtn({
+  children,
+  onClick,
+  disabled,
+  title,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  title?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      type="button"
+      className={[
+        "rounded-lg border px-2 py-1 text-xs",
+        disabled
+          ? "border-slate-700/60 bg-slate-800/40 text-slate-500 cursor-not-allowed"
+          : "border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-800",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
 // -------------------------------------------------------------------
 
 type Source = { id: string; title: string; slug: string | null; summary: string | null; created_at: string };
@@ -97,6 +126,7 @@ export default function ForgePage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [derivatives, setDerivatives] = useState<Derivative[]>([]);
   const [loading, setLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   // bronnen ophalen
   useEffect(() => {
@@ -110,7 +140,7 @@ export default function ForgePage() {
       if (!mounted) return;
       if (data?.length) {
         setSources(data);
-        setSelectedId((prev) => prev ?? data[0].id); // maar 1x zetten → minder “flippen”
+        setSelectedId((prev) => prev ?? data[0].id);
       }
       setLoading(false);
     })();
@@ -138,6 +168,25 @@ export default function ForgePage() {
       mounted = false;
     };
   }, [selectedId]);
+
+  // status updaten (approve / archive)
+  async function setStatus(id: string, status: "approved" | "archived") {
+    try {
+      setUpdatingId(id);
+      const { error } = await supabase
+        .from("content_derivatives")
+        .update({ status })
+        .eq("id", id);
+      if (error) throw error;
+      // Optimistische UI
+      setDerivatives((prev) => prev.map((d) => (d.id === id ? { ...d, status } : d)));
+    } catch (e) {
+      alert("Kon status niet updaten 😕");
+      console.error(e);
+    } finally {
+      setUpdatingId(null);
+    }
+  }
 
   if (loading) {
     return (
@@ -187,7 +236,7 @@ export default function ForgePage() {
         </Card>
       )}
 
-      {/* Social posts (met echte logo's + Copy-knop) */}
+      {/* Social posts */}
       <section className="mt-6">
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-teal-300">Social posts</h3>
         {derivatives.length === 0 ? (
@@ -199,6 +248,8 @@ export default function ForgePage() {
               const text = payload.caption ?? payload.script ?? "";
               const hashtags = Array.isArray(payload.hashtags) ? payload.hashtags.join(" ") : "";
               const link = payload.cta_url ?? "";
+              const busy = updatingId === d.id;
+
               return (
                 <Card key={d.id} className="min-h-[180px]">
                   <div className="flex items-center justify-between gap-3 text-xs">
@@ -210,8 +261,14 @@ export default function ForgePage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <CopyBtn text={text} />
+                      <ActionBtn onClick={() => setStatus(d.id, "approved")} disabled={busy} title="Markeer als approved">
+                        Approve
+                      </ActionBtn>
+                      <ActionBtn onClick={() => setStatus(d.id, "archived")} disabled={busy} title="Archiveer deze post">
+                        Archive
+                      </ActionBtn>
                       <span className="rounded-full border border-slate-600/70 bg-slate-800/60 px-2 py-0.5 text-[11px] text-slate-300">
-                        {d.status}
+                        {busy ? "..." : d.status}
                       </span>
                     </div>
                   </div>
