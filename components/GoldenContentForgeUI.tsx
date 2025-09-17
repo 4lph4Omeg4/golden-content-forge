@@ -26,7 +26,7 @@ function BrandTitle() {
 }
 /* --------------------------------------- */
 
-const WEBHOOK = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL!; // hardcoded via env
+const WEBHOOK = "https://sh4m4ni4k.app.n8n.cloud/webhook/paint"
 
 export default function GoldenContentForgeUI() {
   const [prompt, setPrompt] = useState("");
