@@ -2,6 +2,33 @@
 
 import { useState } from "react";
 
+/* ---- Brand header met logo + fallback ---- */
+function BrandTitle() {
+  const [i, setI] = useState(0);
+  const srcs = ["/gcf-logo.svg", "/gcf-logo.png", "/logo.svg", "/logo.png"];
+  const src = i < srcs.length ? srcs[i] : null;
+
+  return (
+    <div className="flex items-center gap-3">
+      {src ? (
+        <img
+          src={src}
+          alt="Golden Content Forge"
+          width={28}
+          height={28}
+          className="shrink-0 rounded-md"
+          onError={() => setI((n) => n + 1)}
+        />
+      ) : null}
+      <h1 className="text-3xl font-extrabold tracking-tight">
+        <span className="text-amber-300">Golden</span>{" "}
+        <span className="text-amber-100">Content Forge</span>
+      </h1>
+    </div>
+  );
+}
+/* ----------------------------------------- */
+
 type BlogSavedPayload = {
   title: string;
   slug?: string;
@@ -47,7 +74,6 @@ export default function GoldenContentForgeUI({
       const ct = res.headers.get("content-type") || "";
       const data: any = ct.includes("application/json") ? await res.json() : await res.text();
 
-      // Probeer flexibel velden te lezen uit je webhook-respons
       const title: string =
         (data?.title as string) ??
         (data?.blog?.title as string) ??
@@ -69,7 +95,6 @@ export default function GoldenContentForgeUI({
         (data?.meta?.url as string) ??
         undefined;
 
-      // Voor de previews op de homepage
       const metaText =
         typeof data?.meta === "string"
           ? data.meta
@@ -88,7 +113,6 @@ export default function GoldenContentForgeUI({
 
       pushLog("Webhook OK — blog ontvangen.");
 
-      // >>> KOPPELING: Forge informeren dat er een blog is
       await onBlogSaved?.({ title, slug, summary, canonical_url });
       pushLog("Forge: Source + socials aangemaakt.");
     } catch (e: any) {
@@ -102,7 +126,7 @@ export default function GoldenContentForgeUI({
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 text-slate-200">
-      <h1 className="text-3xl font-extrabold tracking-tight text-amber-300">Golden Content Forge</h1>
+      <BrandTitle />
 
       {/* Top: prompt + webhook */}
       <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
