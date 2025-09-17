@@ -42,29 +42,6 @@ function BrandTitle() {
 }
 /* ------------------------------------------------------------- */
 
-
-  return (
-    <div className="flex items-center gap-3">
-      {src ? (
-        <img
-          src={`${src}?v=1`}             // mini cache-buster
-          alt="Golden Content Forge"
-          width={28}
-          height={28}
-          className="shrink-0 rounded-md"
-          onError={() => setI((n) => n + 1)}  // probeer volgende kandidaat
-        />
-      ) : null}
-      <h1 className="text-3xl font-extrabold tracking-tight">
-        <span className="text-amber-300">Golden</span>{" "}
-        <span className="text-amber-100">Content Forge</span>
-      </h1>
-    </div>
-  );
-}
-/* ----------------------------------------------- */
-
-
 type BlogSavedPayload = {
   title: string;
   slug?: string;
