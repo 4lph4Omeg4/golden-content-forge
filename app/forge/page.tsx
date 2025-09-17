@@ -8,7 +8,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// ---------- Mini UI helpers (zelfde look als homepage) ----------
+// ---------- UI helpers ----------
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5 shadow-sm ${className}`}>
@@ -19,19 +19,32 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 
 function LogoBadge({ platform, label }: { platform?: string | null; label?: string | null }) {
   const key = (platform ?? "generic").toLowerCase();
-  const fileMap: Record<string, string> = {
-    x: "x.svg",
-    instagram: "instagram.svg",
-    tiktok: "tiktok.svg",
-    linkedin: "linkedin.svg",
-    facebook: "facebook.svg",
+  const map: Record<string, string> = {
+    x: "x",
+    instagram: "instagram",
+    tiktok: "tiktok",
+    linkedin: "linkedin",
+    facebook: "facebook",
   };
-  const file = fileMap[key];
-  // toon echt logo als bestand aanwezig; anders nette text-badge
-  return file ? (
+  const base = map[key];
+  if (!base) {
+    return (
+      <span className="inline-flex items-center rounded-full border border-slate-600/70 bg-slate-800/60 px-2 py-0.5 text-xs font-medium text-slate-200">
+        {(label || key).toUpperCase()}
+      </span>
+    );
+  }
+
+  const svg = `/brands/${base}.svg`;
+  const png = `/brands/${base}.png`;
+
+  return (
     <span className="inline-flex items-center gap-2 rounded-full border border-slate-600/70 bg-slate-800/60 px-2 py-0.5">
       <img
-        src={`/brands/${file}`}
+        src={svg}
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).src = png;
+        }}
         alt={(label || key).toUpperCase()}
         width={14}
         height={14}
@@ -39,13 +52,10 @@ function LogoBadge({ platform, label }: { platform?: string | null; label?: stri
       />
       <span className="text-xs font-medium text-slate-200">{(label || key).toUpperCase()}</span>
     </span>
-  ) : (
-    <span className="inline-flex items-center rounded-full border border-slate-600/70 bg-slate-800/60 px-2 py-0.5 text-xs font-medium text-slate-200">
-      {(label || key).toUpperCase()}
-    </span>
   );
 }
-// ---------------------------------------------------------------
+// --------------------------------
+
 
 type Source = { id: string; title: string; slug: string | null; summary: string | null; created_at: string };
 type Derivative = { id: string; platform: string | null; kind: string | null; status: string | null; created_at: string; payload: any };
