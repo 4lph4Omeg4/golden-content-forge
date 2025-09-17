@@ -149,19 +149,13 @@ export default function GoldenContentForgeUI() {
           ? `${(process.env.NEXT_PUBLIC_SITE_URL || window.location.origin)}/blog/${slug}`
           : undefined);
 
-// 4) Previews in UI — robuuste extractie van meta/blog
+// 4) Previews in UI — robuuste extractie (géén nieuwe stripHtml)
 const firstOf = (obj: any, paths: string[]) => {
   for (const p of paths) {
     const val = p.split(".").reduce((o, k) => (o && o[k] != null ? o[k] : undefined), obj);
     if (val != null) return val;
   }
   return undefined;
-};
-const stripHtml = (val: any) => {
-  const s = typeof val === "string" ? val : "";
-  const div = document.createElement("div");
-  div.innerHTML = s;
-  return (div.textContent || div.innerText || "").replace(/\s+/g, " ").trim();
 };
 
 // Probeer veel-voorkomende varianten (n8n flows verschillen)
@@ -180,7 +174,7 @@ let blogAny =
 if (!blogAny && typeof data?.blog === "string") blogAny = data.blog;
 if (!blogAny && typeof data === "string") blogAny = data; // sommige webhooks geven plain string
 
-// Bouw previews
+// Bouw previews (gebruik de bestaande stripHtml uit eerder in handleForge)
 const metaPreviewText =
   typeof metaAny === "string"
     ? metaAny
@@ -191,16 +185,15 @@ const metaPreviewText =
 const blogHtmlOrText =
   (typeof blogAny === "string" ? blogAny
     : blogAny?.content || blogAny?.html || blogAny?.markdown || blogAny?.md || "")
-  || ""; // leeg als niets
+  || "";
 
 const blogPreviewText =
   blogHtmlOrText
     ? (blogHtmlOrText.startsWith("{") || blogHtmlOrText.startsWith("["))
-        ? blogHtmlOrText // lijkt al JSON
-        : stripHtml(blogHtmlOrText) // haal tags weg voor nette preview
+        ? blogHtmlOrText
+        : stripHtml(blogHtmlOrText)              // <-- géén nieuwe helper, gebruik de bestaande
     : (summary || stripHtml(prompt) || "(geen blog ontvangen)");
 
-// Zet in UI
 setMetaPreview(metaPreviewText);
 setBlogPreview(blogPreviewText);
 
