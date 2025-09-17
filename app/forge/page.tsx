@@ -8,22 +8,33 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-/* ---- Brand header met logo + fallback ---- */
+/* ---- Brand header met logo + brede fallback ---- */
 function BrandTitle() {
-  const [i, setI] = useState(0);
-  const srcs = ["/gcf-logo.svg", "/gcf-logo.png", "/logo.svg", "/logo.png"];
-  const src = i < srcs.length ? srcs[i] : null;
+  const [i, setI] = React.useState(0);
+  const candidates = [
+    "/gcf-logo.svg",
+    "/gcf-logo.png",
+    "/brands/forge.svg",
+    "/brands/forge.png",
+    "/brands/golden-content-forge.svg",
+    "/brands/golden-content-forge.png",
+    "/brands/gcf.svg",
+    "/brands/gcf.png",
+    "/logo.svg",
+    "/logo.png",
+  ];
+  const src = i < candidates.length ? candidates[i] : null;
 
   return (
     <div className="flex items-center gap-3">
       {src ? (
         <img
-          src={src}
+          src={`${src}?v=1`}             // mini cache-buster
           alt="Golden Content Forge"
           width={28}
           height={28}
           className="shrink-0 rounded-md"
-          onError={() => setI((n) => n + 1)}
+          onError={() => setI((n) => n + 1)}  // probeer volgende kandidaat
         />
       ) : null}
       <h1 className="text-3xl font-extrabold tracking-tight">
@@ -33,7 +44,8 @@ function BrandTitle() {
     </div>
   );
 }
-/* ----------------------------------------- */
+/* ----------------------------------------------- */
+
 
 // ---------- UI helpers ----------
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
